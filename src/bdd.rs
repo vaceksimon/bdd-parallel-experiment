@@ -1,79 +1,113 @@
-use crate::{Bdd, Node};
+use crate::{Bdd, Node, NodeId, Variable};
 use std::collections::HashMap;
 
-const TERMINAL_0: u64 = u64::MAX - 1;
-const TERMINAL_1: u64 = u64::MAX;
+const TERMINAL_VARIABLE: Variable = Variable::MAX;
 
-impl Node {
-    fn new(variable: u64) -> Self {
-        Self {
-            variable,
-            low_child: None,
-            high_child: None,
-        }
+impl NodeId {
+    const TERMINAL_0: Self = NodeId(usize::MAX - 1);
+    const TERMINAL_1: Self = NodeId(usize::MAX);
+
+    fn as_usize(self) -> usize {
+        self.0
     }
 
     fn is_terminal(&self) -> bool {
-        self.variable == TERMINAL_0 || self.variable == TERMINAL_1
+        self == &Self::TERMINAL_0 || self == &Self::TERMINAL_1
+    }
+
+    fn is_one(self) -> bool {
+        self == Self::TERMINAL_1
+    }
+
+    fn is_zero(self) -> bool {
+        self == Self::TERMINAL_0
+    }
+}
+
+impl Node {
+    fn new(variable: Variable, low_child: NodeId, high_child: NodeId) -> Self {
+        Self {
+            variable,
+            low_child,
+            high_child,
+        }
+    }
+
+    fn one() -> Self {
+        Self::new(TERMINAL_VARIABLE, NodeId::TERMINAL_1, NodeId::TERMINAL_1)
+    }
+
+    fn zero() -> Self {
+        Self::new(TERMINAL_VARIABLE, NodeId::TERMINAL_0, NodeId::TERMINAL_0)
+    }
+
+    fn is_one(&self) -> bool {
+        self.low_child == NodeId::TERMINAL_1
+    }
+
+    fn is_zero(&self) -> bool {
+        self.low_child == NodeId::TERMINAL_0
+    }
+
+    fn is_terminal(&self) -> bool {
+        self.variable == TERMINAL_VARIABLE
     }
 }
 
 impl Bdd {
-    fn apply_recursive_wrapper(left: Box<Node>, right: Box<Node>) -> Node {
-        // finished
-        let task_cache: HashMap<(Box<Node>, Box<Node>), Node> = HashMap::new();
-        // existing
-        let node_table: HashMap<(u64, u64, u64), Node> = HashMap::new();
-        Self::apply_recursive(left, right, &task_cache, &node_table)
+    fn new() -> Self {
+        let terminal_0 = Node::zero();
+        let terminal_1 = Node::one();
+
+        Bdd {
+            nodes: Vec::from([terminal_0, terminal_1]),
+            node_table: HashMap::new(),
+            task_cache: HashMap::new(),
+        }
     }
 
-    fn apply_recursive(
-        left: Box<Node>,
-        right: Box<Node>,
-        task_cache: &HashMap<(Box<Node>, Box<Node>), Node>,
-        node_table: &HashMap<(u64, u64, u64), Node>,
-    ) -> Node {
-        if left.is_terminal() && right.is_terminal() {
-            let value = left.variable == TERMINAL_1 && right.variable == TERMINAL_1;
-            return Node::new(if value { TERMINAL_1 } else { TERMINAL_0 });
+    fn apply_recursive(&mut self, left: NodeId, right: NodeId) -> Node {
+        if left.is_terminal() || right.is_terminal() {
+            let value = if left.is_one() && right.is_one() {
+                NodeId::TERMINAL_1
+            } else {
+                NodeId::TERMINAL_0
+            };
+            return Node::new(TERMINAL_VARIABLE, value, value);
         }
 
-        if let Some(node) = task_cache.get(&(left.clone(), right.clone())) {
-            return node.clone();
+        if let Some(found_node_id) = self.task_cache.get(&(left, right)) {
+            return self.nodes[found_node_id.as_usize()];
         }
 
-        let v: u64;
-        let (low_left, high_left): (Option<Box<Node>>, Option<Box<Node>>);
-        let (low_right, high_right): (Option<Box<Node>>, Option<Box<Node>>);
-        if left.variable < right.variable {
-            v = left.variable;
-            (low_left, high_left) = (left.low_child, left.high_child);
-            (low_right, high_right) = (Some(right.clone()), Some(right.clone()));
+        let v: Variable;
+        let left_node = self.nodes[left.as_usize()];
+        let right_node = self.nodes[right.as_usize()];
+        let (low_left, high_left): (NodeId, NodeId);
+        let (low_right, high_right): (NodeId, NodeId);
+        if left_node.variable < right_node.variable {
+            v = left_node.variable;
+            (low_left, high_left) = (left_node.low_child, left_node.high_child);
+            (low_right, high_right) = (right, right);
         } else {
-            v = right.variable;
-            (low_left, high_left) = (Some(left.clone()), Some(left.clone()));
-            (low_right, high_right) = (right.low_child, right.high_child);
+            v = right_node.variable;
+            (low_left, high_left) = (left, left);
+            (low_right, high_right) = (right_node.low_child, right_node.high_child);
         }
 
-        let l = Self::apply_recursive(low_left, low_right, task_cache, node_table);
-        let h = Self::apply_recursive(high_left, high_right, task_cache, node_table);
+        let l = self.apply_recursive(low_left, low_right);
+        let h = self.apply_recursive(high_left, high_right);
 
-        let c: Node;
-        if l != h {
-            c = Self::ensure_node(node_table, v, l, h);
-        } else {
-            c = l;
-        }
+        let c = if l != h { self.ensure_node(v, l, h) } else { l };
 
-        task_cache.insert((left.clone(), right.clone()), c.clone());
+        self.task_cache.insert(
+            (left, right),
+            todo!("NodeId created by a to be implemented cache function"),
+        );
+        c
     }
 
-    fn ensure_node(
-        node_table: &HashMap<(u64, u64, u64), Node>,
-        variable: u64,
-        low_child: Box<Node>,
-        high_child: Box<Node>,
-    ) -> Node {
+    fn ensure_node(&self, _variable: Variable, _low_child: Node, _high_child: Node) -> Node {
         todo!()
     }
 }
