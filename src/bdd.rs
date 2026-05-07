@@ -66,18 +66,18 @@ impl Bdd {
         }
     }
 
-    fn apply_recursive(&mut self, left: NodeId, right: NodeId) -> Node {
+    fn apply_recursive(&mut self, left: NodeId, right: NodeId) -> (NodeId, Node) {
         if left.is_terminal() || right.is_terminal() {
             let value = if left.is_one() && right.is_one() {
                 NodeId::TERMINAL_1
             } else {
                 NodeId::TERMINAL_0
             };
-            return Node::new(TERMINAL_VARIABLE, value, value);
+            return (value, Node::new(TERMINAL_VARIABLE, value, value));
         }
 
         if let Some(found_node_id) = self.task_cache.get(&(left, right)) {
-            return self.nodes[found_node_id.as_usize()];
+            return (*found_node_id, self.nodes[found_node_id.as_usize()]);
         }
 
         let v: Variable;
@@ -98,16 +98,29 @@ impl Bdd {
         let l = self.apply_recursive(low_left, low_right);
         let h = self.apply_recursive(high_left, high_right);
 
-        let c = if l != h { self.ensure_node(v, l, h) } else { l };
+        let (c_node_id, c) = if l != h {
+            self.ensure_node(v, l.0, h.0)
+        } else {
+            l
+        };
 
-        self.task_cache.insert(
-            (left, right),
-            todo!("NodeId created by a to be implemented cache function"),
-        );
-        c
+        self.task_cache.insert((left, right), c_node_id);
+        (c_node_id, c)
     }
 
-    fn ensure_node(&self, _variable: Variable, _low_child: Node, _high_child: Node) -> Node {
-        todo!()
+    fn ensure_node(
+        &mut self,
+        variable: Variable,
+        low_child: NodeId,
+        high_child: NodeId,
+    ) -> (NodeId, Node) {
+        let needle = Node::new(variable, low_child, high_child);
+        if let Some(found) = self.node_table.get(&needle) {
+            (*found, needle)
+        } else {
+            let node_id = self.nodes.len();
+            self.nodes.insert(node_id, needle);
+            (NodeId(node_id), needle)
+        }
     }
 }
