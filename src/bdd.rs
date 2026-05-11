@@ -67,37 +67,43 @@ impl Bdd {
         }
     }
 
-    fn apply_recursive(&mut self, left: NodeId, right: NodeId) -> (NodeId, Node) {
-        if left.is_terminal() && right.is_terminal() {
-            return if left.is_one() && right.is_one() {
-                (NodeId::TERMINAL_1, self.nodes[1])
+    fn apply_recursive(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+        if a_id.is_terminal() && b_id.is_terminal() {
+            return if a_id.is_one() && b_id.is_one() {
+                (
+                    NodeId::TERMINAL_1,
+                    self.nodes[NodeId::TERMINAL_1.as_usize()],
+                )
             } else {
-                (NodeId::TERMINAL_0, self.nodes[0])
+                (
+                    NodeId::TERMINAL_0,
+                    self.nodes[NodeId::TERMINAL_0.as_usize()],
+                )
             };
         }
 
-        if let Some(found_node_id) = self.task_cache.get(&(left, right)) {
+        if let Some(found_node_id) = self.task_cache.get(&(a_id, b_id)) {
             return (*found_node_id, self.nodes[found_node_id.as_usize()]);
         }
 
-        let left_node = self.nodes[left.as_usize()];
-        let right_node = self.nodes[right.as_usize()];
-        let v = min(left_node.variable, right_node.variable);
+        let a = self.nodes[a_id.as_usize()];
+        let b = self.nodes[b_id.as_usize()];
+        let v = min(a.variable, b.variable);
 
-        let (low_left, high_left) = if left_node.variable == v {
-            (left_node.low_child, left_node.high_child)
+        let (low_a, high_a) = if a.variable == v {
+            (a.low_child, a.high_child)
         } else {
-            (left, left)
+            (a_id, a_id)
         };
 
-        let (low_right, high_right) = if right_node.variable == v {
-            (right_node.low_child, right_node.high_child)
+        let (low_b, high_b) = if b.variable == v {
+            (b.low_child, b.high_child)
         } else {
-            (right, right)
+            (b_id, b_id)
         };
 
-        let l = self.apply_recursive(low_left, low_right);
-        let h = self.apply_recursive(high_left, high_right);
+        let l = self.apply_recursive(low_a, low_b);
+        let h = self.apply_recursive(high_a, high_b);
 
         let (c_node_id, c) = if l != h {
             self.ensure_node(v, l.0, h.0)
@@ -105,7 +111,7 @@ impl Bdd {
             l
         };
 
-        self.task_cache.insert((left, right), c_node_id);
+        self.task_cache.insert((a_id, b_id), c_node_id);
         (c_node_id, c)
     }
 
