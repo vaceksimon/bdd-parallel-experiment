@@ -4,8 +4,8 @@ use std::collections::HashMap;
 const TERMINAL_VARIABLE: Variable = Variable::MAX;
 
 impl NodeId {
-    const TERMINAL_0: Self = NodeId(usize::MAX - 1);
-    const TERMINAL_1: Self = NodeId(usize::MAX);
+    const TERMINAL_0: Self = NodeId(0);
+    const TERMINAL_1: Self = NodeId(1);
 
     fn as_usize(self) -> usize {
         self.0
@@ -67,13 +67,12 @@ impl Bdd {
     }
 
     fn apply_recursive(&mut self, left: NodeId, right: NodeId) -> (NodeId, Node) {
-        if left.is_terminal() || right.is_terminal() {
-            let value = if left.is_one() && right.is_one() {
-                NodeId::TERMINAL_1
+        if left.is_terminal() && right.is_terminal() {
+            return if left.is_one() && right.is_one() {
+                (NodeId::TERMINAL_1, self.nodes[1])
             } else {
-                NodeId::TERMINAL_0
+                (NodeId::TERMINAL_0, self.nodes[0])
             };
-            return (value, Node::new(TERMINAL_VARIABLE, value, value));
         }
 
         if let Some(found_node_id) = self.task_cache.get(&(left, right)) {
@@ -118,9 +117,10 @@ impl Bdd {
         if let Some(found) = self.node_table.get(&needle) {
             (*found, needle)
         } else {
-            let node_id = self.nodes.len();
-            self.nodes.insert(node_id, needle);
-            (NodeId(node_id), needle)
+            let node_id = NodeId(self.nodes.len());
+            self.nodes.push(needle);
+            self.node_table.insert(needle, node_id);
+            (node_id, needle)
         }
     }
 }
