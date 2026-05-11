@@ -19,10 +19,6 @@ impl NodeId {
     fn is_one(self) -> bool {
         self == Self::TERMINAL_1
     }
-
-    fn is_zero(self) -> bool {
-        self == Self::TERMINAL_0
-    }
 }
 
 impl Node {
@@ -41,22 +37,16 @@ impl Node {
     fn zero() -> Self {
         Self::new(TERMINAL_VARIABLE, NodeId::TERMINAL_0, NodeId::TERMINAL_0)
     }
+}
 
-    fn is_one(&self) -> bool {
-        self.low_child == NodeId::TERMINAL_1
-    }
-
-    fn is_zero(&self) -> bool {
-        self.low_child == NodeId::TERMINAL_0
-    }
-
-    fn is_terminal(&self) -> bool {
-        self.variable == TERMINAL_VARIABLE
+impl Default for Bdd {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Bdd {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let terminal_0 = Node::zero();
         let terminal_1 = Node::one();
 
@@ -67,7 +57,7 @@ impl Bdd {
         }
     }
 
-    fn apply_recursive(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+    pub fn apply_recursive(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         if a_id.is_terminal() && b_id.is_terminal() {
             return if a_id.is_one() && b_id.is_one() {
                 (

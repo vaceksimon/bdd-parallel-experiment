@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
-mod bdd;
+pub mod bdd;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct NodeId(usize);
-type Variable = u32;
+pub struct NodeId(usize);
+pub type Variable = u32;
 
 #[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone)]
-struct Node {
+pub struct Node {
     variable: Variable,
     low_child: NodeId,
     high_child: NodeId,
 }
 
-struct Bdd {
+pub struct Bdd {
     nodes: Vec<Node>,
     // existing
     node_table: HashMap<Node, NodeId>,
