@@ -4,7 +4,8 @@ pub mod bdd;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NodeId(usize);
-pub type Variable = u32;
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Variable(u32);
 
 #[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone)]
 pub struct Node {

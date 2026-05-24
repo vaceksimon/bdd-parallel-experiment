@@ -2,7 +2,9 @@ use crate::{Bdd, Node, NodeId, Variable};
 use std::cmp::min;
 use std::collections::HashMap;
 
-const TERMINAL_VARIABLE: Variable = Variable::MAX;
+impl Variable {
+    const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
+}
 
 impl NodeId {
     const TERMINAL_0: Self = NodeId(0);
@@ -31,11 +33,19 @@ impl Node {
     }
 
     fn one() -> Self {
-        Self::new(TERMINAL_VARIABLE, NodeId::TERMINAL_1, NodeId::TERMINAL_1)
+        Self::new(
+            Variable::TERMINAL_VARIABLE,
+            NodeId::TERMINAL_1,
+            NodeId::TERMINAL_1,
+        )
     }
 
     fn zero() -> Self {
-        Self::new(TERMINAL_VARIABLE, NodeId::TERMINAL_0, NodeId::TERMINAL_0)
+        Self::new(
+            Variable::TERMINAL_VARIABLE,
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_0,
+        )
     }
 }
 
@@ -138,22 +148,22 @@ mod tests {
         let one_id = NodeId::TERMINAL_1;
         nodes.insert(one_id.as_usize(), one);
 
-        let a4 = Node::new(3, NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let a4 = Node::new(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
         let a4_id = NodeId(2);
         nodes.insert(a4_id.as_usize(), a4);
 
-        let a3 = Node::new(2, NodeId::TERMINAL_1, a4_id);
+        let a3 = Node::new(Variable(2), NodeId::TERMINAL_1, a4_id);
         let a3_id = NodeId(3);
         nodes.insert(a3_id.as_usize(), a3);
-        let a2 = Node::new(2, NodeId::TERMINAL_0, a4_id);
+        let a2 = Node::new(Variable(2), NodeId::TERMINAL_0, a4_id);
         let a2_id = NodeId(4);
         nodes.insert(a2_id.as_usize(), a2);
 
-        let a1 = Node::new(1, a2_id, a3_id);
+        let a1 = Node::new(Variable(1), a2_id, a3_id);
         let a1_id = NodeId(5);
         nodes.insert(a1_id.as_usize(), a1);
 
-        let b3 = Node::new(3, NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let b3 = Node::new(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
         let b3_id = NodeId(6);
         nodes.insert(b3_id.as_usize(), b3);
 
@@ -161,7 +171,7 @@ mod tests {
         let b2_id = a4_id;
         // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
 
-        let b1 = Node::new(2, b2_id, b3_id);
+        let b1 = Node::new(Variable(2), b2_id, b3_id);
         let b1_id = NodeId(7);
         nodes.insert(b1_id.as_usize(), b1);
 
@@ -181,15 +191,15 @@ mod tests {
         bdd.node_table = node_table;
 
         let (_, c1) = bdd.apply_recursive(a1_id, b1_id);
-        assert_eq!(c1.variable, 1);
+        assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child.as_usize(), 0);
 
         let c2 = bdd.nodes[c1.high_child.as_usize()];
-        assert_eq!(c2.variable, 2);
+        assert_eq!(c2.variable, Variable(2));
         assert_eq!(c2.high_child.as_usize(), 0);
 
         let c3 = bdd.nodes[c2.low_child.as_usize()];
-        assert_eq!(c3.variable, 3);
+        assert_eq!(c3.variable, Variable(3));
         assert_eq!(c3.low_child.as_usize(), 0);
         assert_eq!(c3.high_child.as_usize(), 1);
     }
