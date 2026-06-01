@@ -213,57 +213,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn apply_recursion_manual_bdd_construction() {
-        let mut nodes: Vec<Node> = Vec::with_capacity(8);
-
-        let zero = Node::zero();
-        let zero_id = NodeId::TERMINAL_0;
-        nodes.insert(zero_id.as_usize(), zero);
-        let one = Node::one();
-        let one_id = NodeId::TERMINAL_1;
-        nodes.insert(one_id.as_usize(), one);
-
-        let a4 = Node::new(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let a4_id = NodeId(2);
-        nodes.insert(a4_id.as_usize(), a4);
-
-        let a3 = Node::new(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let a3_id = NodeId(3);
-        nodes.insert(a3_id.as_usize(), a3);
-        let a2 = Node::new(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let a2_id = NodeId(4);
-        nodes.insert(a2_id.as_usize(), a2);
-
-        let a1 = Node::new(Variable(1), a2_id, a3_id);
-        let a1_id = NodeId(5);
-        nodes.insert(a1_id.as_usize(), a1);
-
-        let b3 = Node::new(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let b3_id = NodeId(6);
-        nodes.insert(b3_id.as_usize(), b3);
-
-        let _b2 = a4;
-        let b2_id = a4_id;
-        // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
-
-        let b1 = Node::new(Variable(2), b2_id, b3_id);
-        let b1_id = NodeId(7);
-        nodes.insert(b1_id.as_usize(), b1);
-
+    fn apply_recursion_thesis_example() {
         let mut bdd = Bdd::new();
-        bdd.nodes = nodes;
 
-        let mut node_table: HashMap<Node, NodeId> = HashMap::with_capacity(8);
-        node_table.insert(zero, zero_id);
-        node_table.insert(one, one_id);
-        node_table.insert(a1, a1_id);
-        node_table.insert(a2, a2_id);
-        node_table.insert(a3, a3_id);
-        node_table.insert(a4, a4_id);
-        node_table.insert(b1, b1_id);
-        // node_table.insert(b2, b2_id); // avoid duplicities - node is identical to a4
-        node_table.insert(b3, b3_id);
-        bdd.node_table = node_table;
+        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
+        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
+
+        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
 
         let (_, c1) = bdd.apply_recursive(a1_id, b1_id);
         assert_eq!(c1.variable, Variable(1));
@@ -280,57 +240,17 @@ mod tests {
     }
 
     #[test]
-    fn apply_iterative_manual_bdd_construction() {
-        let mut nodes: Vec<Node> = Vec::with_capacity(8);
-
-        let zero = Node::zero();
-        let zero_id = NodeId::TERMINAL_0;
-        nodes.insert(zero_id.as_usize(), zero);
-        let one = Node::one();
-        let one_id = NodeId::TERMINAL_1;
-        nodes.insert(one_id.as_usize(), one);
-
-        let a4 = Node::new(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let a4_id = NodeId(2);
-        nodes.insert(a4_id.as_usize(), a4);
-
-        let a3 = Node::new(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let a3_id = NodeId(3);
-        nodes.insert(a3_id.as_usize(), a3);
-        let a2 = Node::new(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let a2_id = NodeId(4);
-        nodes.insert(a2_id.as_usize(), a2);
-
-        let a1 = Node::new(Variable(1), a2_id, a3_id);
-        let a1_id = NodeId(5);
-        nodes.insert(a1_id.as_usize(), a1);
-
-        let b3 = Node::new(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let b3_id = NodeId(6);
-        nodes.insert(b3_id.as_usize(), b3);
-
-        let _b2 = a4;
-        let b2_id = a4_id;
-        // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
-
-        let b1 = Node::new(Variable(2), b2_id, b3_id);
-        let b1_id = NodeId(7);
-        nodes.insert(b1_id.as_usize(), b1);
-
+    fn apply_iterative_manual_thesis_example() {
         let mut bdd = Bdd::new();
-        bdd.nodes = nodes;
 
-        let mut node_table: HashMap<Node, NodeId> = HashMap::with_capacity(8);
-        node_table.insert(zero, zero_id);
-        node_table.insert(one, one_id);
-        node_table.insert(a1, a1_id);
-        node_table.insert(a2, a2_id);
-        node_table.insert(a3, a3_id);
-        node_table.insert(a4, a4_id);
-        node_table.insert(b1, b1_id);
-        // node_table.insert(b2, b2_id); // avoid duplicities - node is identical to a4
-        node_table.insert(b3, b3_id);
-        bdd.node_table = node_table;
+        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
+        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
+
+        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
 
         let (_, c1) = bdd.apply_iterative(a1_id, b1_id);
         assert_eq!(c1.variable, Variable(1));
