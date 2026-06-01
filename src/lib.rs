@@ -7,7 +7,7 @@ pub struct NodeId(usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Variable(u32);
 
-#[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone)]
+#[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Node {
     variable: Variable,
     low_child: NodeId,
