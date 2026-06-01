@@ -217,8 +217,9 @@ impl Bdd {
 mod tests {
     use super::*;
 
-    #[test]
-    pub fn basic_apply_recursive_invariants() {
+    type ApplyFn = fn(&mut Bdd, NodeId, NodeId) -> (NodeId, Node);
+
+    fn basic_apply_invariants(apply: ApplyFn) {
         // Taken from Ruddy:
         // https://github.com/sybila/ruddy/blob/e9b014b7fe3f5b1e8929632dc8a5ca4f9cde717e/src/split/apply.rs#L424
         let mut bdd = Bdd::new();
@@ -228,22 +229,32 @@ mod tests {
         let (tt_id, _) = (NodeId::TERMINAL_1, Node::one());
         let (ff_id, ff) = (NodeId::TERMINAL_0, Node::zero());
 
-        let (res_id, res) = bdd.apply_recursive(a_id, a_id);
+        let (res_id, res) = apply(&mut bdd, a_id, a_id);
         assert_eq!(res_id, a_id);
         assert_eq!(res, a);
 
-        let (res_id, res) = bdd.apply_recursive(a_id, tt_id);
+        let (res_id, res) = apply(&mut bdd, a_id, tt_id);
         assert_eq!(res_id, a_id);
         assert_eq!(res, a);
 
-        let (res_id, res) = bdd.apply_recursive(a_id, ff_id);
+        let (res_id, res) = apply(&mut bdd, a_id, ff_id);
         assert_eq!(res_id, ff_id);
         assert_eq!(res, ff);
 
-        let (res_id, res) = bdd.apply_recursive(a_id, b_id);
-        let (res2_id, res2) = bdd.apply_recursive(b_id, a_id);
+        let (res_id, res) = apply(&mut bdd, a_id, b_id);
+        let (res2_id, res2) = apply(&mut bdd, b_id, a_id);
         assert_eq!(res_id, res2_id);
         assert_eq!(res2, res);
+    }
+
+    #[test]
+    fn basic_apply_recursive_invariants() {
+        basic_apply_invariants(Bdd::apply_recursive);
+    }
+
+    #[test]
+    fn basic_apply_iterative_invariants() {
+        basic_apply_invariants(Bdd::apply_iterative);
     }
 
     fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
@@ -301,7 +312,7 @@ mod tests {
         assert_eq!(bdd.nodes.len(), 8);
     }
 
-    fn assert_thesis_example_apply(apply: fn(&mut Bdd, NodeId, NodeId) -> (NodeId, Node)) {
+    fn assert_thesis_example_apply(apply: ApplyFn) {
         let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
 
         let (_, c1) = apply(&mut bdd, a_root_id, b_root_id);
