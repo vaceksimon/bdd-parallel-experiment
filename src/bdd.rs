@@ -4,6 +4,11 @@ use std::collections::HashMap;
 
 impl Variable {
     const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
+    const UNDEFINED_VARIABLE: Variable = Variable(u32::MAX - 1);
+
+    fn is_undefined(&self) -> bool {
+        self == &Self::UNDEFINED_VARIABLE
+    }
 }
 
 impl NodeId {
@@ -115,6 +120,75 @@ impl Bdd {
         (c_node_id, c)
     }
 
+    pub fn apply_iterative(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+        // stack contains tasks that need to be done
+        let mut stack: Vec<(NodeId, NodeId, Variable)> =
+            vec![(a_id, b_id, Variable::UNDEFINED_VARIABLE)];
+        // results  contains results of tasks
+        let mut results: Vec<(NodeId, Node)> = vec![];
+
+        while let Some((a_id, b_id, variable)) = stack.pop() {
+            if a_id.is_terminal() && b_id.is_terminal() {
+                if a_id.is_one() && b_id.is_one() {
+                    results.push((
+                        NodeId::TERMINAL_1,
+                        self.nodes[NodeId::TERMINAL_1.as_usize()],
+                    ))
+                } else {
+                    results.push((
+                        NodeId::TERMINAL_0,
+                        self.nodes[NodeId::TERMINAL_0.as_usize()],
+                    ))
+                };
+            }
+
+            if variable.is_undefined() {
+                if let Some(found_node_id) = self.task_cache.get(&(a_id, b_id)) {
+                    results.push((*found_node_id, self.nodes[found_node_id.as_usize()]));
+                    continue;
+                }
+
+                let a = self.nodes[a_id.as_usize()];
+                let b = self.nodes[b_id.as_usize()];
+                let v = min(a.variable, b.variable);
+
+                let (low_a, high_a) = if a.variable == v {
+                    (a.low_child, a.high_child)
+                } else {
+                    (a_id, a_id)
+                };
+
+                let (low_b, high_b) = if b.variable == v {
+                    (b.low_child, b.high_child)
+                } else {
+                    (b_id, b_id)
+                };
+
+                stack.push((a_id, b_id, variable));
+                stack.push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
+                stack.push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
+
+                continue;
+            }
+
+            let l = results.pop().expect("high result present in result stack");
+            let h = results.pop().expect("low result present in result stack");
+
+            let (c_node_id, c) = if l != h {
+                self.ensure_node(variable, l.0, h.0)
+            } else {
+                l
+            };
+
+            self.task_cache.insert((a_id, b_id), c_node_id);
+            results.push((c_node_id, c));
+        }
+
+        let (root_id, root) = results.pop().expect("only one result expected");
+        assert!(results.is_empty());
+        (root_id, root)
+    }
+
     fn ensure_node(
         &mut self,
         variable: Variable,
@@ -167,7 +241,74 @@ mod tests {
         let b3_id = NodeId(6);
         nodes.insert(b3_id.as_usize(), b3);
 
-        let b2 = a4;
+        let _b2 = a4;
+        let b2_id = a4_id;
+        // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
+
+        let b1 = Node::new(Variable(2), b2_id, b3_id);
+        let b1_id = NodeId(7);
+        nodes.insert(b1_id.as_usize(), b1);
+
+        let mut bdd = Bdd::new();
+        bdd.nodes = nodes;
+
+        let mut node_table: HashMap<Node, NodeId> = HashMap::with_capacity(8);
+        node_table.insert(zero, zero_id);
+        node_table.insert(one, one_id);
+        node_table.insert(a1, a1_id);
+        node_table.insert(a2, a2_id);
+        node_table.insert(a3, a3_id);
+        node_table.insert(a4, a4_id);
+        node_table.insert(b1, b1_id);
+        // node_table.insert(b2, b2_id); // avoid duplicities - node is identical to a4
+        node_table.insert(b3, b3_id);
+        bdd.node_table = node_table;
+
+        let (_, c1) = bdd.apply_recursive(a1_id, b1_id);
+        assert_eq!(c1.variable, Variable(1));
+        assert_eq!(c1.low_child.as_usize(), 0);
+
+        let c2 = bdd.nodes[c1.high_child.as_usize()];
+        assert_eq!(c2.variable, Variable(2));
+        assert_eq!(c2.high_child.as_usize(), 0);
+
+        let c3 = bdd.nodes[c2.low_child.as_usize()];
+        assert_eq!(c3.variable, Variable(3));
+        assert_eq!(c3.low_child.as_usize(), 0);
+        assert_eq!(c3.high_child.as_usize(), 1);
+    }
+
+    #[test]
+    fn apply_iterative_manual_bdd_construction() {
+        let mut nodes: Vec<Node> = Vec::with_capacity(8);
+
+        let zero = Node::zero();
+        let zero_id = NodeId::TERMINAL_0;
+        nodes.insert(zero_id.as_usize(), zero);
+        let one = Node::one();
+        let one_id = NodeId::TERMINAL_1;
+        nodes.insert(one_id.as_usize(), one);
+
+        let a4 = Node::new(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let a4_id = NodeId(2);
+        nodes.insert(a4_id.as_usize(), a4);
+
+        let a3 = Node::new(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let a3_id = NodeId(3);
+        nodes.insert(a3_id.as_usize(), a3);
+        let a2 = Node::new(Variable(2), NodeId::TERMINAL_0, a4_id);
+        let a2_id = NodeId(4);
+        nodes.insert(a2_id.as_usize(), a2);
+
+        let a1 = Node::new(Variable(1), a2_id, a3_id);
+        let a1_id = NodeId(5);
+        nodes.insert(a1_id.as_usize(), a1);
+
+        let b3 = Node::new(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let b3_id = NodeId(6);
+        nodes.insert(b3_id.as_usize(), b3);
+
+        let _b2 = a4;
         let b2_id = a4_id;
         // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
 
