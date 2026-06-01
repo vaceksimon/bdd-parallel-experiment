@@ -133,13 +133,14 @@ impl Bdd {
                     results.push((
                         NodeId::TERMINAL_1,
                         self.nodes[NodeId::TERMINAL_1.as_usize()],
-                    ))
+                    ));
                 } else {
                     results.push((
                         NodeId::TERMINAL_0,
                         self.nodes[NodeId::TERMINAL_0.as_usize()],
-                    ))
+                    ));
                 };
+                continue;
             }
 
             if variable.is_undefined() {
@@ -164,15 +165,15 @@ impl Bdd {
                     (b_id, b_id)
                 };
 
-                stack.push((a_id, b_id, variable));
+                stack.push((a_id, b_id, v));
                 stack.push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
                 stack.push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
 
                 continue;
             }
 
-            let l = results.pop().expect("high result present in result stack");
             let h = results.pop().expect("low result present in result stack");
+            let l = results.pop().expect("high result present in result stack");
 
             let (c_node_id, c) = if l != h {
                 self.ensure_node(variable, l.0, h.0)
@@ -331,7 +332,7 @@ mod tests {
         node_table.insert(b3, b3_id);
         bdd.node_table = node_table;
 
-        let (_, c1) = bdd.apply_recursive(a1_id, b1_id);
+        let (_, c1) = bdd.apply_iterative(a1_id, b1_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child.as_usize(), 0);
 
