@@ -217,6 +217,35 @@ impl Bdd {
 mod tests {
     use super::*;
 
+    #[test]
+    pub fn basic_apply_recursive_invariants() {
+        // Taken from Ruddy:
+        // https://github.com/sybila/ruddy/blob/e9b014b7fe3f5b1e8929632dc8a5ca4f9cde717e/src/split/apply.rs#L424
+        let mut bdd = Bdd::new();
+
+        let (a_id, a) = bdd.ensure_node(Variable(1), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (tt_id, _) = (NodeId::TERMINAL_1, Node::one());
+        let (ff_id, ff) = (NodeId::TERMINAL_0, Node::zero());
+
+        let (res_id, res) = bdd.apply_recursive(a_id, a_id);
+        assert_eq!(res_id, a_id);
+        assert_eq!(res, a);
+
+        let (res_id, res) = bdd.apply_recursive(a_id, tt_id);
+        assert_eq!(res_id, a_id);
+        assert_eq!(res, a);
+
+        let (res_id, res) = bdd.apply_recursive(a_id, ff_id);
+        assert_eq!(res_id, ff_id);
+        assert_eq!(res, ff);
+
+        let (res_id, res) = bdd.apply_recursive(a_id, b_id);
+        let (res2_id, res2) = bdd.apply_recursive(b_id, a_id);
+        assert_eq!(res_id, res2_id);
+        assert_eq!(res2, res);
+    }
+
     fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
@@ -293,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_iterative_manual_thesis_example() {
+    fn apply_iterative_thesis_example() {
         let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
 
         let (_, c1) = bdd.apply_recursive(a_root_id, b_root_id);
