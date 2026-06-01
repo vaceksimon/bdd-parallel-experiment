@@ -23,6 +23,11 @@ impl NodeId {
         self == &Self::TERMINAL_0 || self == &Self::TERMINAL_1
     }
 
+    #[cfg(test)]
+    fn is_zero(self) -> bool {
+        self == Self::TERMINAL_0
+    }
+
     fn is_one(self) -> bool {
         self == Self::TERMINAL_1
     }
@@ -212,8 +217,9 @@ impl Bdd {
 mod tests {
     use super::*;
 
-    #[test]
-    fn apply_recursion_thesis_example() {
+    fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
+        // Two BDDs taken from Lukas Urban's Thesis
+        // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
         let mut bdd = Bdd::new();
 
         let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
@@ -225,7 +231,52 @@ mod tests {
         let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
         let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
 
-        let (_, c1) = bdd.apply_recursive(a1_id, b1_id);
+        (bdd, a1_id, b1_id)
+    }
+
+    #[test]
+    fn thesis_example_constructs_correctly() {
+        let (bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
+
+        let a1 = bdd.nodes[a_root_id.as_usize()];
+        assert_eq!(a1.variable, Variable(1));
+
+        let a2 = bdd.nodes[a1.low_child.as_usize()];
+        assert_eq!(a2.variable, Variable(2));
+        assert!(a2.low_child.is_zero());
+
+        let a3 = bdd.nodes[a1.high_child.as_usize()];
+        assert_eq!(a3.variable, a2.variable);
+        assert!(a3.low_child.is_one());
+
+        assert_eq!(a2.high_child, a3.high_child);
+        let a4_id = a3.high_child;
+        let a4 = bdd.nodes[a4_id.as_usize()];
+        assert_eq!(a4.variable, Variable(3));
+        assert_eq!(a4.low_child, a2.low_child);
+        assert_eq!(a4.high_child, a3.low_child);
+
+        let b1 = bdd.nodes[b_root_id.as_usize()];
+        assert_eq!(b1.variable, Variable(2));
+
+        let b2_id = b1.low_child;
+        let b2 = bdd.nodes[b2_id.as_usize()];
+        assert_eq!(a4_id, b2_id);
+        assert_eq!(a4, b2);
+
+        let b3 = bdd.nodes[b1.high_child.as_usize()];
+        assert_eq!(b3.variable, Variable(3));
+        assert!(b3.low_child.is_one());
+        assert!(b3.high_child.is_zero());
+
+        assert_eq!(bdd.nodes.len(), 8);
+    }
+
+    #[test]
+    fn apply_recursion_thesis_example() {
+        let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
+
+        let (_, c1) = bdd.apply_recursive(a_root_id, b_root_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child.as_usize(), 0);
 
@@ -237,22 +288,15 @@ mod tests {
         assert_eq!(c3.variable, Variable(3));
         assert_eq!(c3.low_child.as_usize(), 0);
         assert_eq!(c3.high_child.as_usize(), 1);
+
+        assert_eq!(bdd.nodes.len(), 10);
     }
 
     #[test]
     fn apply_iterative_manual_thesis_example() {
-        let mut bdd = Bdd::new();
+        let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
 
-        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
-
-        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
-
-        let (_, c1) = bdd.apply_iterative(a1_id, b1_id);
+        let (_, c1) = bdd.apply_recursive(a_root_id, b_root_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child.as_usize(), 0);
 
@@ -264,5 +308,7 @@ mod tests {
         assert_eq!(c3.variable, Variable(3));
         assert_eq!(c3.low_child.as_usize(), 0);
         assert_eq!(c3.high_child.as_usize(), 1);
+
+        assert_eq!(bdd.nodes.len(), 10);
     }
 }
