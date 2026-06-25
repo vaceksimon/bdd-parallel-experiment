@@ -1,5 +1,5 @@
-use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
 use crate::{Bdd, Node, NodeId, Variable};
+use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
 
 impl From<biodivine_lib_bdd::Bdd> for Bdd {
     fn from(value: biodivine_lib_bdd::Bdd) -> Self {
@@ -9,7 +9,7 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
         let mut result = Bdd::new();
         for biodivine_node in value.to_nodes() {
             if biodivine_node.is_terminal() {
-                continue;   // Skip terminal nodes (these are already created for us).
+                continue; // Skip terminal nodes (these are already created for us).
             }
             let node: Node = biodivine_node.into();
             let node_id = NodeId(result.nodes.len());
@@ -27,17 +27,12 @@ impl From<Bdd> for biodivine_lib_bdd::Bdd {
 
         // One special thing we do here is that we set num_vars to u16. We will do this for
         // all biodivine BDDs that we work with to make sure they are all compatible.
-        let mut nodes: Vec<BddNode> = vec![
-            BddNode::mk_zero(u16::MAX),
-            BddNode::mk_one(u16::MAX),
-        ];
+        let mut nodes: Vec<BddNode> = vec![BddNode::mk_zero(u16::MAX), BddNode::mk_one(u16::MAX)];
         for node in value.nodes.into_iter().skip(2) {
             nodes.push(node.into());
         }
         biodivine_lib_bdd::Bdd::from_nodes(&nodes)
-            .unwrap_or_else(|message| {
-                panic!("Correctness violation: {message}")
-            })
+            .unwrap_or_else(|message| panic!("Correctness violation: {message}"))
     }
 }
 
@@ -56,21 +51,26 @@ impl From<Node> for BddNode {
         BddNode::mk_node(
             value.variable.into(),
             value.low_child.into(),
-            value.high_child.into()
+            value.high_child.into(),
         )
     }
 }
 
 impl From<BddVariable> for Variable {
     fn from(value: BddVariable) -> Self {
-        Variable(u32::try_from(value.to_index()).expect("Correctness violation: Biodivine variables are 16-bit."))
+        Variable(
+            u32::try_from(value.to_index())
+                .expect("Correctness violation: Biodivine variables are 16-bit."),
+        )
     }
 }
 
 impl From<Variable> for BddVariable {
     fn from(value: Variable) -> Self {
         // Technically this conversion can fail, but we don't expect that to happen in tests.
-        BddVariable::from_index(usize::try_from(value.0).expect("Invariant violation: usize is smaller than 32 bits."))
+        BddVariable::from_index(
+            usize::try_from(value.0).expect("Invariant violation: usize is smaller than 32 bits."),
+        )
     }
 }
 

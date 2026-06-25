@@ -35,10 +35,7 @@ fn bdd_size_from_filename(path: &Path) -> Option<usize> {
 fn load_bdd_files_up_to(max_nodes: usize) -> Vec<PathBuf> {
     load_bdd_files()
         .into_iter()
-        .filter(|path| {
-            bdd_size_from_filename(path)
-                .is_some_and(|size| size <= max_nodes)
-        })
+        .filter(|path| bdd_size_from_filename(path).is_some_and(|size| size <= max_nodes))
         .collect()
 }
 
@@ -51,7 +48,9 @@ fn load_biodivine_bdd(path: &Path) -> BiodivineBdd {
     let mut bdd = BiodivineBdd::read_as_bytes(&mut file)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
     // A small hack to make all BDDs compatible between each other:
-    unsafe { bdd.set_num_vars(u16::MAX); }
+    unsafe {
+        bdd.set_num_vars(u16::MAX);
+    }
     bdd
 }
 
@@ -108,7 +107,8 @@ fn recursive_and_iterative_apply_agree_on_all_bdd_pairs() {
                 merged_apply(&files[i], &files[j], Bdd::apply_iterative);
 
             assert_eq!(
-                node_rec, node_iter,
+                node_rec,
+                node_iter,
                 "root nodes differ for {} and {}",
                 files[i].display(),
                 files[j].display()
@@ -125,7 +125,8 @@ fn recursive_and_iterative_apply_agree_on_all_bdd_pairs() {
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
 
             assert_eq!(
-                actual, expected_canonical,
+                actual,
+                expected_canonical,
                 "apply result differs from biodivine AND for {} and {}",
                 files[i].display(),
                 files[j].display()
