@@ -247,6 +247,38 @@ impl Bdd {
         id_map.insert(id, new_id);
         new_id
     }
+
+    /// Extract the subgraph reachable from `root` into a new BDD.
+    ///
+    /// Node IDs are recomputed for the extracted BDD. Returns the new BDD together
+    /// with the remapped ID of `root`.
+    pub fn extract(&self, root: NodeId) -> (Bdd, NodeId) {
+        let mut extracted = Bdd::new();
+        let mut id_map = HashMap::new();
+        id_map.insert(NodeId::TERMINAL_0, NodeId::TERMINAL_0);
+        id_map.insert(NodeId::TERMINAL_1, NodeId::TERMINAL_1);
+
+        let new_root = Self::extract_node(&mut extracted, self, root, &mut id_map);
+        (extracted, new_root)
+    }
+
+    fn extract_node(
+        extracted: &mut Bdd,
+        source: &Bdd,
+        id: NodeId,
+        id_map: &mut HashMap<NodeId, NodeId>,
+    ) -> NodeId {
+        if let Some(&mapped) = id_map.get(&id) {
+            return mapped;
+        }
+
+        let node = source.nodes[id.as_usize()];
+        let low = Self::extract_node(extracted, source, node.low_child, id_map);
+        let high = Self::extract_node(extracted, source, node.high_child, id_map);
+        let (new_id, _) = extracted.ensure_node(node.variable, low, high);
+        id_map.insert(id, new_id);
+        new_id
+    }
 }
 
 #[cfg(test)]
@@ -409,6 +441,55 @@ mod tests {
         assert!(merged_b3.high_child.is_zero());
 
         assert_eq!(bdd_a.nodes.len(), nodes_before + 2);
+    }
+
+    #[test]
+    fn extract_remaps_ids_and_preserves_structure() {
+        let (bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
+
+        let (extracted, new_a_root_id) = bdd.extract(a_root_id);
+
+        assert_eq!(extracted.nodes.len(), 6);
+
+        let a1 = extracted.nodes[new_a_root_id.as_usize()];
+        assert_eq!(a1.variable, Variable(1));
+
+        let a2 = extracted.nodes[a1.low_child.as_usize()];
+        assert_eq!(a2.variable, Variable(2));
+        assert!(a2.low_child.is_zero());
+
+        let a3 = extracted.nodes[a1.high_child.as_usize()];
+        assert_eq!(a3.variable, Variable(2));
+        assert!(a3.low_child.is_one());
+
+        assert_eq!(a2.high_child, a3.high_child);
+        let a4 = extracted.nodes[a2.high_child.as_usize()];
+        assert_eq!(a4.variable, Variable(3));
+        assert_eq!(a4.low_child, a2.low_child);
+        assert_eq!(a4.high_child, a3.low_child);
+
+        let (extracted_b, new_b_root_id) = bdd.extract(b_root_id);
+        assert_eq!(extracted_b.nodes.len(), 5);
+
+        let b1 = extracted_b.nodes[new_b_root_id.as_usize()];
+        assert_eq!(b1.variable, Variable(2));
+
+        let b2 = extracted_b.nodes[b1.low_child.as_usize()];
+        assert_eq!(b2, a4);
+
+        let b3 = extracted_b.nodes[b1.high_child.as_usize()];
+        assert_eq!(b3.variable, Variable(3));
+        assert!(b3.low_child.is_one());
+        assert!(b3.high_child.is_zero());
+    }
+
+    #[test]
+    fn extract_terminal_returns_terminals_only() {
+        let bdd = Bdd::new();
+        let (extracted, root) = bdd.extract(NodeId::TERMINAL_1);
+
+        assert_eq!(root, NodeId::TERMINAL_1);
+        assert_eq!(extracted.nodes.len(), 2);
     }
 
     #[test]
