@@ -34,7 +34,7 @@ impl NodeId {
 }
 
 impl Node {
-    fn new(variable: Variable, low_child: NodeId, high_child: NodeId) -> Self {
+    pub(crate) fn new(variable: Variable, low_child: NodeId, high_child: NodeId) -> Self {
         Self {
             variable,
             low_child,
