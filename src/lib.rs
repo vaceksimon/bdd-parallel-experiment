@@ -2,6 +2,15 @@ use std::collections::HashMap;
 
 pub mod bdd;
 
+/// Implements conversion utilities for `biodivine_lib_bdd`. These enable comparison testing,
+/// but don't ship as part of the official API.
+#[cfg(test)]
+mod biodivine_conversions;
+
+/// These are larger "integration tests" that
+#[cfg(test)]
+mod comparison_tests;
+
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
 pub struct NodeId(usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
