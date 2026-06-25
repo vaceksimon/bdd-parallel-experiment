@@ -1,0 +1,129 @@
+name: Rust build and validation workflow
+
+on:
+  push:
+    branches-ignore:
+      - '**/feat/*'
+      - '**/fix/*'
+      - '**/chore/*'
+  pull_request:
+    branches:
+      - '*'
+
+env:
+  # A fixed version used for testing, so that the builds don't
+  # spontaneously break after a few years.
+  # Make sure to update this from time to time.
+  RUST_VERSION: "1.96.0"
+  MIN_RUST_VERSION: "1.88.0"
+  CARGO_FEATURES: "--all-features"
+  RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
+
+jobs:
+  # Checks syntax formatting.
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  # Check docs
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - run: cargo doc ${{ env.CARGO_FEATURES }}
+
+  # Run basic code validity check.
+  check:
+    needs: fmt
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - run: cargo check ${{ env.CARGO_FEATURES }}
+
+  # Run tests.
+  test:
+    needs: check
+    name: Test Suite (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - run: cargo test ${{ env.CARGO_FEATURES }}
+
+  # Checks code style.
+  clippy:
+    needs: check
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+      - run: cargo clippy ${{ env.CARGO_FEATURES }}
+
+  # Validate minimum supported Rust version declared in Cargo.toml.
+  minimum-supported:
+    name: Minimum Version
+    needs: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.MIN_RUST_VERSION }}
+      - run: cargo check ${{ env.CARGO_FEATURES }}
+      - run: cargo test ${{ env.CARGO_FEATURES }}
+
+  # Compute code coverage
+  codecov:
+    needs: test
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout.
+        uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Tarpaulin requires nightly toolchain.
+          # (this overrides default settings)
+          toolchain: nightly
+      # Install action using cargo-binstall.
+      # (faster because we don't have to compile tarpaulin)
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+      - name: Generate code coverage
+        run: |
+          cargo +nightly tarpaulin --lib --doc --examples ${{ env.CARGO_FEATURES }} --out xml
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v6
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+        env:
+          CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}"
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-coverage-report
+          path: cobertura.xml
