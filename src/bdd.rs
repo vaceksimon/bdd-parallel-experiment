@@ -211,6 +211,42 @@ impl Bdd {
             (node_id, needle)
         }
     }
+
+    /// Merge all nodes from `other` into this BDD's storage.
+    ///
+    /// Child links are rebuilt using this BDD's node IDs. Uniqueness is preserved
+    /// through the internal node table, so structurally identical nodes are shared.
+    ///
+    /// Returns a mapping from node IDs in `other` to their corresponding IDs here.
+    pub fn merge(&mut self, other: &Bdd) -> HashMap<NodeId, NodeId> {
+        let mut id_map = HashMap::new();
+        id_map.insert(NodeId::TERMINAL_0, NodeId::TERMINAL_0);
+        id_map.insert(NodeId::TERMINAL_1, NodeId::TERMINAL_1);
+
+        for i in 2..other.nodes.len() {
+            Self::merge_node(self, other, NodeId(i), &mut id_map);
+        }
+
+        id_map
+    }
+
+    fn merge_node(
+        &mut self,
+        other: &Bdd,
+        id: NodeId,
+        id_map: &mut HashMap<NodeId, NodeId>,
+    ) -> NodeId {
+        if let Some(&mapped) = id_map.get(&id) {
+            return mapped;
+        }
+
+        let node = other.nodes[id.as_usize()];
+        let low = Self::merge_node(self, other, node.low_child, id_map);
+        let high = Self::merge_node(self, other, node.high_child, id_map);
+        let (new_id, _) = self.ensure_node(node.variable, low, high);
+        id_map.insert(id, new_id);
+        new_id
+    }
 }
 
 #[cfg(test)]
@@ -339,5 +375,61 @@ mod tests {
     #[test]
     fn apply_iterative_thesis_example() {
         assert_thesis_example_apply(Bdd::apply_iterative);
+    }
+
+    #[test]
+    fn merge_remaps_ids_and_deduplicates_nodes() {
+        let mut bdd_a = Bdd::new();
+        let (a4_id, _) = bdd_a.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (a3_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let (a2_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
+        bdd_a.ensure_node(Variable(1), a2_id, a3_id);
+
+        let mut bdd_b = Bdd::new();
+        let (b3_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let (b2_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b1_id, _) = bdd_b.ensure_node(Variable(2), b2_id, b3_id);
+
+        let nodes_before = bdd_a.nodes.len();
+        let id_map = bdd_a.merge(&bdd_b);
+
+        assert_eq!(id_map[&NodeId::TERMINAL_0], NodeId::TERMINAL_0);
+        assert_eq!(id_map[&NodeId::TERMINAL_1], NodeId::TERMINAL_1);
+        assert_eq!(id_map[&b2_id], a4_id);
+
+        let merged_b1_id = id_map[&b1_id];
+        let merged_b1 = bdd_a.nodes[merged_b1_id.as_usize()];
+        assert_eq!(merged_b1.variable, Variable(2));
+        assert_eq!(merged_b1.low_child, a4_id);
+        assert_eq!(merged_b1.high_child, id_map[&b3_id]);
+
+        let merged_b3 = bdd_a.nodes[id_map[&b3_id].as_usize()];
+        assert_eq!(merged_b3.variable, Variable(3));
+        assert!(merged_b3.low_child.is_one());
+        assert!(merged_b3.high_child.is_zero());
+
+        assert_eq!(bdd_a.nodes.len(), nodes_before + 2);
+    }
+
+    #[test]
+    fn merge_then_apply_matches_single_bdd_apply() {
+        let (mut bdd_ab, a_root_id, b_root_id) = make_thesis_example_bdds();
+        let (_, expected) = bdd_ab.apply_recursive(a_root_id, b_root_id);
+
+        let mut bdd_a = Bdd::new();
+        let (a4_id, _) = bdd_a.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (a3_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let (a2_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
+        let (a1_id, _) = bdd_a.ensure_node(Variable(1), a2_id, a3_id);
+
+        let mut bdd_b = Bdd::new();
+        let (b3_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let (b2_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b1_id, _) = bdd_b.ensure_node(Variable(2), b2_id, b3_id);
+
+        let id_map = bdd_a.merge(&bdd_b);
+        let (_, actual) = bdd_a.apply_recursive(a1_id, id_map[&b1_id]);
+
+        assert_eq!(actual, expected);
     }
 }
