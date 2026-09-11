@@ -1,4 +1,8 @@
+use crossbeam_queue::SegQueue;
+use dashmap::DashMap;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{Condvar, Mutex};
 
 pub mod bdd;
 
@@ -29,4 +33,25 @@ pub struct Bdd {
     node_table: HashMap<Node, NodeId>,
     // finished
     task_cache: HashMap<(NodeId, NodeId), NodeId>,
+}
+
+pub struct BddParallel {
+    nodes: Vec<Node>,
+    // existing
+    _node_table: DashMap<Node, NodeId>,
+    // finished
+    _task_cache: DashMap<(NodeId, NodeId), NodeId>,
+}
+
+struct WorkerPool {
+    queue: SegQueue<(NodeId, NodeId, Variable)>,
+    _results: SegQueue<(NodeId, Node)>,
+
+    // Termination detection state
+    is_done: AtomicBool,
+    idle_workers: AtomicUsize,
+
+    // Standard library locking primitives used purely for thread sleeping
+    sleep_lock: Mutex<()>,
+    cvar: Condvar,
 }
