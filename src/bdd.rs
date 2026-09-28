@@ -2,7 +2,7 @@ use crate::{Bdd, BddParallel, Node, NodeId, Variable, WorkerPool};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
@@ -299,66 +299,101 @@ impl BddParallel {
         let terminal_1 = Node::one();
 
         BddParallel {
-            nodes: Vec::from([terminal_0, terminal_1]),
-            _node_table: DashMap::new(),
-            _task_cache: DashMap::new(),
+            nodes: RwLock::new(Vec::from([terminal_0, terminal_1])),
+            node_table: DashMap::new(),
+            task_cache: DashMap::new(),
         }
     }
 
-    pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> HashSet<(NodeId, NodeId)> {
+    pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         let total_workers = 3;
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
-            _results: SegQueue::new(),
+            results: SegQueue::new(),
             is_done: AtomicBool::new(false),
             idle_workers: AtomicUsize::new(0),
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
         pool.queue.push((a_id, b_id, Variable::UNDEFINED_VARIABLE));
-        let generated_tasks = RwLock::new(HashSet::new()); // for now this is the goal
 
         thread::scope(|s| {
             for _ in 0..total_workers {
                 s.spawn(|| {
-                    println!("{:?} just spawned", thread::current().id());
                     let pool = pool.clone();
                     loop {
                         if pool.is_done.load(Ordering::Acquire) {
                             break;
                         }
 
-                        if let Some((a_id, b_id, _)) = pool.queue.pop() {
-                            println!("{:?} at work", thread::current().id());
+                        if let Some((a_id, b_id, variable)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
-                                generated_tasks.write().unwrap().insert((a_id, b_id));
+                                if a_id.is_one() && b_id.is_one() {
+                                    pool.results.push((
+                                        NodeId::TERMINAL_1,
+                                        self.nodes.read().unwrap()[NodeId::TERMINAL_1.as_usize()],
+                                    ));
+                                } else {
+                                    pool.results.push((
+                                        NodeId::TERMINAL_0,
+                                        self.nodes.read().unwrap()[NodeId::TERMINAL_0.as_usize()],
+                                    ));
+                                };
                                 continue;
                             }
 
-                            let a = self.nodes[a_id.as_usize()];
-                            let b = self.nodes[b_id.as_usize()];
-                            let v = min(a.variable, b.variable);
+                            if variable.is_undefined() {
+                                if let Some(found_node_id) = self.task_cache.get(&(a_id, b_id)) {
+                                    pool.results.push((
+                                        *found_node_id,
+                                        self.nodes.read().unwrap()[found_node_id.as_usize()],
+                                    ));
+                                    continue;
+                                }
 
-                            let (low_a, high_a) = if a.variable == v {
-                                (a.low_child, a.high_child)
+                                let a = self.nodes.read().unwrap()[a_id.as_usize()];
+                                let b = self.nodes.read().unwrap()[b_id.as_usize()];
+                                let v = min(a.variable, b.variable);
+
+                                let (low_a, high_a) = if a.variable == v {
+                                    (a.low_child, a.high_child)
+                                } else {
+                                    (a_id, a_id)
+                                };
+
+                                let (low_b, high_b) = if b.variable == v {
+                                    (b.low_child, b.high_child)
+                                } else {
+                                    (b_id, b_id)
+                                };
+
+                                pool.queue.push((a_id, b_id, v));
+                                pool.queue
+                                    .push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
+                                pool.queue
+                                    .push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
+                                pool.cvar.notify_one();
+
+                                continue;
+                            }
+
+                            let h = pool
+                                .results
+                                .pop()
+                                .expect("low result present in result stack"); // can I guarantee the top of stack contains the children results?
+                            let l = pool
+                                .results
+                                .pop()
+                                .expect("high result present in result stack");
+
+                            let (c_node_id, c) = if l != h {
+                                self.ensure_node(variable, l.0, h.0)
                             } else {
-                                (a_id, a_id)
+                                l
                             };
 
-                            let (low_b, high_b) = if b.variable == v {
-                                (b.low_child, b.high_child)
-                            } else {
-                                (b_id, b_id)
-                            };
-
-                            generated_tasks.write().unwrap().insert((a_id, b_id));
-                            pool.queue
-                                .push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
-                            pool.queue
-                                .push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
-                            pool.cvar.notify_all(); // we have just 4 workers, so its justifiable to notify all
-
-                            continue;
+                            self.task_cache.insert((a_id, b_id), c_node_id);
+                            pool.results.push((c_node_id, c));
                         }
 
                         let idle_workers = pool.idle_workers.fetch_add(1, Ordering::SeqCst) + 1;
@@ -394,7 +429,26 @@ impl BddParallel {
             }
         });
 
-        generated_tasks.into_inner().unwrap()
+        let (root_id, root) = pool.results.pop().expect("only one result expected");
+        assert!(pool.results.is_empty());
+        (root_id, root)
+    }
+
+    fn ensure_node(
+        &self,
+        variable: Variable,
+        low_child: NodeId,
+        high_child: NodeId,
+    ) -> (NodeId, Node) {
+        let needle = Node::new(variable, low_child, high_child);
+        if let Some(found) = self.node_table.get(&needle) {
+            (*found, needle)
+        } else {
+            let node_id = NodeId(self.nodes.read().unwrap().len());
+            self.nodes.write().unwrap().push(needle);
+            self.node_table.insert(needle, node_id);
+            (node_id, needle)
+        }
     }
 }
 
@@ -670,7 +724,7 @@ mod tests {
         nodes.insert(b1_id.as_usize(), b1);
 
         let mut bdd = BddParallel::new();
-        bdd.nodes = nodes;
+        bdd.nodes = RwLock::new(nodes);
 
         let node_table: DashMap<Node, NodeId> = DashMap::with_capacity(8);
         node_table.insert(zero, zero_id);
@@ -682,26 +736,21 @@ mod tests {
         node_table.insert(b1, b1_id);
         // node_table.insert(b2, b2_id); // avoid duplicities - node is identical to a4
         node_table.insert(b3, b3_id);
-        bdd._node_table = node_table;
+        bdd.node_table = node_table;
 
-        let task_set = bdd.apply(a1_id, b1_id);
-        let expected_results = HashSet::from([
-            (NodeId(0), NodeId(0)),
-            (NodeId(0), NodeId(1)),
-            (NodeId(0), NodeId(2)),
-            (NodeId(0), NodeId(2)),
-            (NodeId(1), NodeId(0)),
-            (NodeId(1), NodeId(1)),
-            (NodeId(1), NodeId(2)),
-            (NodeId(1), NodeId(2)),
-            (NodeId(2), NodeId(6)),
-            (NodeId(2), NodeId(6)),
-            (NodeId(3), NodeId(7)),
-            (NodeId(3), NodeId(7)),
-            (NodeId(4), NodeId(7)),
-            (NodeId(4), NodeId(7)),
-            (NodeId(5), NodeId(7)),
-        ]);
-        assert_eq!(expected_results, task_set);
+        let (_, c1) = bdd.apply(a1_id, b1_id);
+        assert_eq!(c1.variable, Variable(1));
+        assert_eq!(c1.low_child.as_usize(), 0);
+
+        let c2 = bdd.nodes.read().unwrap()[c1.high_child.as_usize()];
+        assert_eq!(c2.variable, Variable(2));
+        assert_eq!(c2.high_child.as_usize(), 0);
+
+        let c3 = bdd.nodes.read().unwrap()[c2.low_child.as_usize()];
+        assert_eq!(c3.variable, Variable(3));
+        assert_eq!(c3.low_child.as_usize(), 0);
+        assert_eq!(c3.high_child.as_usize(), 1);
+
+        assert_eq!(bdd.nodes.read().unwrap().len(), 10);
     }
 }
