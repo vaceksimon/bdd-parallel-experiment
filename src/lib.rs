@@ -1,8 +1,7 @@
-use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, RwLock};
 
 pub mod bdd;
 
@@ -36,16 +35,16 @@ pub struct Bdd {
 }
 
 pub struct BddParallel {
-    nodes: Vec<Node>,
+    nodes: RwLock<Vec<Node>>,
     // existing
-    _node_table: DashMap<Node, NodeId>,
+    node_table: DashMap<Node, NodeId>,
     // finished
-    _task_cache: DashMap<(NodeId, NodeId), NodeId>,
+    task_cache: DashMap<(NodeId, NodeId), NodeId>,
 }
 
 struct WorkerPool {
-    queue: SegQueue<(NodeId, NodeId, Variable)>,
-    _results: SegQueue<(NodeId, Node)>,
+    stack: Mutex<Vec<(NodeId, NodeId, Variable)>>,
+    results: Mutex<Vec<(NodeId, Node)>>,
 
     // Termination detection state
     is_done: AtomicBool,
