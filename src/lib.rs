@@ -1,4 +1,3 @@
-use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
@@ -44,8 +43,8 @@ pub struct BddParallel {
 }
 
 struct WorkerPool {
-    queue: SegQueue<(NodeId, NodeId, Variable)>,
-    results: SegQueue<(NodeId, Node)>,
+    stack: Mutex<Vec<(NodeId, NodeId, Variable)>>,
+    results: Mutex<Vec<(NodeId, Node)>>,
 
     // Termination detection state
     is_done: AtomicBool,

@@ -1,5 +1,4 @@
 use crate::{Bdd, BddParallel, Node, NodeId, Variable, WorkerPool};
-use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -308,14 +307,13 @@ impl BddParallel {
     pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         let total_workers = 3;
         let pool = Arc::new(WorkerPool {
-            queue: SegQueue::new(),
-            results: SegQueue::new(),
+            stack: Mutex::new(vec![(a_id, b_id, Variable::UNDEFINED_VARIABLE)]),
+            results: Mutex::new(Vec::new()),
             is_done: AtomicBool::new(false),
             idle_workers: AtomicUsize::new(0),
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id, Variable::UNDEFINED_VARIABLE));
 
         thread::scope(|s| {
             for _ in 0..total_workers {
@@ -326,25 +324,33 @@ impl BddParallel {
                             break;
                         }
 
-                        if let Some((a_id, b_id, variable)) = pool.queue.pop() {
+                        let top_of_stack = pool.stack.lock().unwrap().pop(); // to avoid locking for the whole `if let` statement
+                        if let Some((a_id, b_id, variable)) = top_of_stack {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
-                                    pool.results.push((
+                                    pool.results.lock().unwrap().push((
                                         NodeId::TERMINAL_1,
                                         self.nodes.read().unwrap()[NodeId::TERMINAL_1.as_usize()],
                                     ));
                                 } else {
-                                    pool.results.push((
+                                    pool.results.lock().unwrap().push((
                                         NodeId::TERMINAL_0,
                                         self.nodes.read().unwrap()[NodeId::TERMINAL_0.as_usize()],
                                     ));
                                 };
                                 continue;
                             }
+                            println!(
+                                "[{:?}] just POPPED [{:?}, {:?}, {:?}]",
+                                thread::current().id(),
+                                a_id,
+                                b_id,
+                                variable
+                            );
 
                             if variable.is_undefined() {
                                 if let Some(found_node_id) = self.task_cache.get(&(a_id, b_id)) {
-                                    pool.results.push((
+                                    pool.results.lock().unwrap().push((
                                         *found_node_id,
                                         self.nodes.read().unwrap()[found_node_id.as_usize()],
                                     ));
@@ -367,24 +373,40 @@ impl BddParallel {
                                     (b_id, b_id)
                                 };
 
-                                pool.queue.push((a_id, b_id, v));
-                                pool.queue
-                                    .push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
-                                pool.queue
-                                    .push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
+                                let mut stack = pool.stack.lock().unwrap();
+                                stack.push((a_id, b_id, v));
+                                println!(
+                                    "[{:?}] just pushed [{:?}, {:?}, {:?}]",
+                                    thread::current().id(),
+                                    a_id,
+                                    b_id,
+                                    v
+                                );
+                                stack.push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
+                                println!(
+                                    "[{:?}] just pushed [{:?}, {:?}, {:?}]",
+                                    thread::current().id(),
+                                    high_a,
+                                    high_b,
+                                    Variable::UNDEFINED_VARIABLE
+                                );
+                                stack.push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
+                                println!(
+                                    "[{:?}] just pushed [{:?}, {:?}, {:?}]",
+                                    thread::current().id(),
+                                    low_a,
+                                    low_b,
+                                    Variable::UNDEFINED_VARIABLE
+                                );
+                                drop(stack);
                                 pool.cvar.notify_one();
 
                                 continue;
                             }
 
-                            let h = pool
-                                .results
-                                .pop()
-                                .expect("low result present in result stack"); // can I guarantee the top of stack contains the children results?
-                            let l = pool
-                                .results
-                                .pop()
-                                .expect("high result present in result stack");
+                            let mut results = pool.results.lock().unwrap();
+                            let h = results.pop().expect("high result present in result stack"); // can I guarantee the top of stack contains the children results?
+                            let l = results.pop().expect("low result present in result stack");
 
                             let (c_node_id, c) = if l != h {
                                 self.ensure_node(variable, l.0, h.0)
@@ -393,7 +415,8 @@ impl BddParallel {
                             };
 
                             self.task_cache.insert((a_id, b_id), c_node_id);
-                            pool.results.push((c_node_id, c));
+                            results.push((c_node_id, c));
+                            drop(results);
                         }
 
                         let idle_workers = pool.idle_workers.fetch_add(1, Ordering::SeqCst) + 1;
@@ -407,13 +430,15 @@ impl BddParallel {
                         let mut guard = pool.sleep_lock.lock().unwrap();
 
                         // We sleep while the system is NOT done, and the queue is still empty
-                        while !pool.is_done.load(Ordering::Acquire) && pool.queue.is_empty() {
+                        while !pool.is_done.load(Ordering::Acquire)
+                            && pool.stack.lock().unwrap().is_empty()
+                        {
                             // We use `wait_timeout` to periodically wake up.
                             // This is crucial when mixing Lock-Free Queues with Mutex-based Condvars to
                             // prevent "missed notification" race conditions.
                             let (new_guard, result) = pool
                                 .cvar
-                                .wait_timeout(guard, Duration::from_nanos(10)) // todo change as needed
+                                .wait_timeout(guard, Duration::from_millis(10)) // todo change as needed
                                 .unwrap();
 
                             guard = new_guard; // Reassign the lock guard
@@ -429,8 +454,9 @@ impl BddParallel {
             }
         });
 
-        let (root_id, root) = pool.results.pop().expect("only one result expected");
-        assert!(pool.results.is_empty());
+        let mut results = pool.results.lock().unwrap();
+        let (root_id, root) = results.pop().expect("only one result expected");
+        assert!(results.is_empty());
         (root_id, root)
     }
 
