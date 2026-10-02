@@ -1,4 +1,4 @@
-use crate::parallel::Bdd;
+use crate::parallel::{Bdd, Task};
 use crate::{Node, NodeId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 struct WorkerPool {
-    queue: SegQueue<(NodeId, NodeId, Variable)>,
+    queue: SegQueue<(NodeId, NodeId)>,
 
     // Termination detection state
     is_done: AtomicBool,
@@ -38,7 +38,12 @@ impl Bdd {
         }
     }
 
-    fn generate_tasks(&mut self, a_id: NodeId, b_id: NodeId, total_workers: usize) -> HashSet<(NodeId, NodeId)> {
+    fn generate_tasks(
+        &mut self,
+        a_id: NodeId,
+        b_id: NodeId,
+        total_workers: usize,
+    ) -> HashSet<Task> {
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
             is_done: AtomicBool::new(false),
@@ -46,8 +51,8 @@ impl Bdd {
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id, Variable::UNDEFINED_VARIABLE));
-        let generated_tasks = RwLock::new(HashSet::new());
+        pool.queue.push((a_id, b_id));
+        let generated_tasks: RwLock<HashSet<Task>> = RwLock::new(HashSet::new()); // TODO this could be shared with apply; could be crossbeam::dequeue::Injector
 
         thread::scope(|s| {
             for _ in 0..total_workers {
@@ -58,9 +63,14 @@ impl Bdd {
                             break;
                         }
 
-                        if let Some((a_id, b_id, _)) = pool.queue.pop() {
+                        if let Some((a_id, b_id)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
-                                generated_tasks.write().unwrap().insert((a_id, b_id));
+                                generated_tasks.write().unwrap().insert((
+                                    a_id,
+                                    b_id,
+                                    Variable::TERMINAL_VARIABLE,
+                                ));
+                                // TODO at this moment a worker could be notified to start processing the predecessor
                                 continue;
                             }
 
@@ -80,12 +90,11 @@ impl Bdd {
                                 (b_id, b_id)
                             };
 
-                            generated_tasks.write().unwrap().insert((a_id, b_id));
-                            pool.queue
-                                .push((high_a, high_b, Variable::UNDEFINED_VARIABLE));
-                            pool.queue
-                                .push((low_a, low_b, Variable::UNDEFINED_VARIABLE));
-                            pool.cvar.notify_all(); // we have just 4 workers, so its justifiable to notify all
+                            generated_tasks.write().unwrap().insert((a_id, b_id, v)); // TODO v is gonna be important for the bottom-up traversal
+                            // TODO figure out how to associate the successor nodes with its predecessor
+                            pool.queue.push((high_a, high_b));
+                            pool.queue.push((low_a, low_b));
+                            pool.cvar.notify_one();
 
                             continue;
                         }
@@ -107,7 +116,7 @@ impl Bdd {
                             // prevent "missed notification" race conditions.
                             let (new_guard, result) = pool
                                 .cvar
-                                .wait_timeout(guard, Duration::from_nanos(10)) // todo change as needed
+                                .wait_timeout(guard, Duration::from_millis(10)) // todo change as needed
                                 .unwrap();
 
                             guard = new_guard; // Reassign the lock guard
@@ -126,11 +135,12 @@ impl Bdd {
         generated_tasks.into_inner().unwrap()
     }
 
+    // TODO apply and generating tasks could be run asynchronously. When generate_tasks creates one, it could notify apply to start working
     pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
-        self.generate_tasks(a_id, b_id, 3);
-        todo!();
+        let total_workers = 3;
+        let _tasks = self.generate_tasks(a_id, b_id, total_workers);
+        todo!("Apply");
     }
-
 }
 
 #[cfg(test)]
@@ -190,7 +200,11 @@ mod tests {
         node_table.insert(b3, b3_id);
         bdd._node_table = node_table;
 
-        let task_set = bdd.generate_tasks(a1_id, b1_id, 3);
+        let task_set = bdd
+            .generate_tasks(a1_id, b1_id, 3)
+            .iter()
+            .map(|(node_a, node_b, _)| (*node_a, *node_b))
+            .collect();
         let expected_results = HashSet::from([
             (NodeId(0), NodeId(0)),
             (NodeId(0), NodeId(1)),
