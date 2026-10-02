@@ -11,7 +11,6 @@ use std::time::Duration;
 
 struct WorkerPool {
     queue: SegQueue<(NodeId, NodeId, Variable)>,
-    _results: SegQueue<(NodeId, Node)>,
 
     // Termination detection state
     is_done: AtomicBool,
@@ -39,23 +38,20 @@ impl Bdd {
         }
     }
 
-    pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> HashSet<(NodeId, NodeId)> {
-        let total_workers = 3;
+    fn generate_tasks(&mut self, a_id: NodeId, b_id: NodeId, total_workers: usize) -> HashSet<(NodeId, NodeId)> {
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
-            _results: SegQueue::new(),
             is_done: AtomicBool::new(false),
             idle_workers: AtomicUsize::new(0),
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
         pool.queue.push((a_id, b_id, Variable::UNDEFINED_VARIABLE));
-        let generated_tasks = RwLock::new(HashSet::new()); // for now this is the goal
+        let generated_tasks = RwLock::new(HashSet::new());
 
         thread::scope(|s| {
             for _ in 0..total_workers {
                 s.spawn(|| {
-                    println!("{:?} just spawned", thread::current().id());
                     let pool = pool.clone();
                     loop {
                         if pool.is_done.load(Ordering::Acquire) {
@@ -63,7 +59,6 @@ impl Bdd {
                         }
 
                         if let Some((a_id, b_id, _)) = pool.queue.pop() {
-                            println!("{:?} at work", thread::current().id());
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 generated_tasks.write().unwrap().insert((a_id, b_id));
                                 continue;
@@ -130,6 +125,12 @@ impl Bdd {
 
         generated_tasks.into_inner().unwrap()
     }
+
+    pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+        self.generate_tasks(a_id, b_id, 3);
+        todo!();
+    }
+
 }
 
 #[cfg(test)]
@@ -137,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parallel_apply() {
+    fn generating_tasks() {
         let mut nodes: Vec<Node> = Vec::with_capacity(8);
 
         let zero = Node::zero();
@@ -189,7 +190,7 @@ mod tests {
         node_table.insert(b3, b3_id);
         bdd._node_table = node_table;
 
-        let task_set = bdd.apply(a1_id, b1_id);
+        let task_set = bdd.generate_tasks(a1_id, b1_id, 3);
         let expected_results = HashSet::from([
             (NodeId(0), NodeId(0)),
             (NodeId(0), NodeId(1)),
