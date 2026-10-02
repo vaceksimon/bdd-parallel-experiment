@@ -1,4 +1,5 @@
-use crate::{Bdd, Node, NodeId};
+use crate::sequential::Bdd;
+use crate::{Node, NodeId};
 use biodivine_lib_bdd::Bdd as BiodivineBdd;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
