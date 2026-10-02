@@ -1,4 +1,5 @@
-use crate::{Bdd, Node, NodeId, Variable};
+use crate::sequential::Bdd;
+use crate::{Node, NodeId, Variable};
 use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
 
 impl From<biodivine_lib_bdd::Bdd> for Bdd {
