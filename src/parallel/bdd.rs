@@ -3,7 +3,7 @@ use crate::{Node, NodeId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
@@ -43,7 +43,7 @@ impl Bdd {
         a_id: NodeId,
         b_id: NodeId,
         total_workers: usize,
-    ) -> HashSet<Task> {
+    ) -> DashMap<Variable, SegQueue<Task>> {
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
             is_done: AtomicBool::new(false),
@@ -52,7 +52,12 @@ impl Bdd {
             cvar: Condvar::new(),
         });
         pool.queue.push((a_id, b_id));
-        let generated_tasks: RwLock<HashSet<Task>> = RwLock::new(HashSet::new()); // TODO this could be shared with apply; could be crossbeam::dequeue::Injector
+        let generated_tasks: RwLock<DashMap<Variable, SegQueue<Task>>> =
+            RwLock::new(DashMap::new());
+        generated_tasks
+            .write()
+            .unwrap()
+            .insert(Variable::TERMINAL_VARIABLE, SegQueue::new());
 
         thread::scope(|s| {
             for _ in 0..total_workers {
@@ -65,11 +70,12 @@ impl Bdd {
 
                         if let Some((a_id, b_id)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
-                                generated_tasks.write().unwrap().insert((
-                                    a_id,
-                                    b_id,
-                                    Variable::TERMINAL_VARIABLE,
-                                ));
+                                generated_tasks
+                                    .read()
+                                    .unwrap()
+                                    .get(&Variable::TERMINAL_VARIABLE)
+                                    .expect("A Queue for terminals should be present")
+                                    .push((a_id, b_id));
                                 // TODO at this moment a worker could be notified to start processing the predecessor
                                 continue;
                             }
@@ -90,10 +96,17 @@ impl Bdd {
                                 (b_id, b_id)
                             };
 
-                            generated_tasks.write().unwrap().insert((a_id, b_id, v)); // TODO v is gonna be important for the bottom-up traversal
+                            if let Some(task_queue) = generated_tasks.read().unwrap().get(&v) {
+                                task_queue.push((a_id, b_id));
+                            } else {
+                                let task_queue: SegQueue<Task> = SegQueue::new();
+                                task_queue.push((a_id, b_id));
+                                generated_tasks.write().unwrap().insert(v, task_queue);
+                            }
+
                             // TODO figure out how to associate the successor nodes with its predecessor
-                            pool.queue.push((high_a, high_b));
                             pool.queue.push((low_a, low_b));
+                            pool.queue.push((high_a, high_b));
                             pool.cvar.notify_one();
 
                             continue;
@@ -135,17 +148,67 @@ impl Bdd {
         generated_tasks.into_inner().unwrap()
     }
 
+    fn process_tasks(
+        &mut self,
+        tasks: DashMap<Variable, SegQueue<Task>>,
+        total_workers: usize,
+    ) -> (NodeId, Node) {
+        let mut keys = BTreeSet::new();
+        tasks.iter().for_each(|item| {
+            keys.insert(*item.key());
+        });
+
+        for variable in keys.into_iter().rev() {
+            let (_variable, queue) = tasks.remove(&variable).unwrap();
+
+            let pool = Arc::new(WorkerPool {
+                queue,
+                is_done: AtomicBool::new(false),
+                idle_workers: AtomicUsize::new(0),
+                sleep_lock: Mutex::new(()),
+                cvar: Condvar::new(),
+            });
+
+            thread::scope(|s| {
+                for _ in 0..total_workers {
+                    s.spawn(|| {
+                        let pool = pool.clone();
+                        loop {
+                            if pool.is_done.load(Ordering::Acquire) {
+                                break;
+                            }
+                            if let Some((a_id, b_id)) = pool.queue.pop() {
+                                if a_id.is_terminal() && b_id.is_terminal() {
+                                    if a_id.is_one() && b_id.is_one() {
+                                        todo!()
+                                    } else {
+                                        todo!()
+                                    }
+                                }
+                                todo!("Terminate")
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        todo!("Process tasks")
+    }
+
     // TODO apply and generating tasks could be run asynchronously. When generate_tasks creates one, it could notify apply to start working
     pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         let total_workers = 3;
-        let _tasks = self.generate_tasks(a_id, b_id, total_workers);
-        todo!("Apply");
+        let tasks = self.generate_tasks(a_id, b_id, total_workers);
+
+        self.process_tasks(tasks, total_workers)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn generating_tasks() {
@@ -201,9 +264,20 @@ mod tests {
         bdd._node_table = node_table;
 
         let task_set = bdd
-            .generate_tasks(a1_id, b1_id, 3)
+            .generate_tasks(a1_id, b1_id, 5)
             .iter()
-            .map(|(node_a, node_b, _)| (*node_a, *node_b))
+            .flat_map(|value| {
+                let queue = value.value();
+                let mut new_queue = Vec::new();
+                while !queue.is_empty() {
+                    let (a, b) = queue.pop().unwrap();
+                    new_queue.push((a, b));
+                }
+                // print!("Tasks for Variable: {:?}:[ ", value.key());
+                // new_queue.iter().for_each(|item| print!("{:?}, ", item));
+                // println!("]");
+                new_queue.into_iter()
+            })
             .collect();
         let expected_results = HashSet::from([
             (NodeId(0), NodeId(0)),
