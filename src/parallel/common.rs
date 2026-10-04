@@ -80,8 +80,18 @@ impl From<Uuid> for TaskId {
     }
 }
 
+impl Default for TaskId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskId {
     pub const TERMINAL: Self = Self(Uuid::nil());
+
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
 }
 
 impl SuccessorResults {

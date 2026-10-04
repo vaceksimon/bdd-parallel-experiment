@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
-use uuid::Uuid;
 
 struct WorkerPool {
     queue: SegQueue<Task>,
@@ -63,7 +62,7 @@ impl Bdd {
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id, Uuid::now_v7().into()));
+        pool.queue.push((a_id, b_id, TaskId::new()));
         let generated_tasks: RwLock<DashMap<Variable, SegQueue<GeneratedTask>>> =
             RwLock::new(DashMap::new());
         generated_tasks
@@ -113,8 +112,8 @@ impl Bdd {
                                 (b_id, b_id)
                             };
 
-                            let low_task_id = Uuid::now_v7().into();
-                            let high_task_id = Uuid::now_v7().into();
+                            let low_task_id = TaskId::new();
+                            let high_task_id = TaskId::new();
                             let successor_results_id =
                                 SuccessorResults::new(low_task_id, high_task_id);
                             if let Some(queue) = generated_tasks.read().unwrap().get(&v) {
@@ -236,7 +235,7 @@ impl Bdd {
                                 .expect("Low result not present");
 
                             let (c_node_id, c) = if l != h {
-                                self.ensure_node(variable, l.0, h.0) // TODO
+                                self.ensure_node(variable, l.0, h.0)
                             } else {
                                 l
                             };
@@ -269,7 +268,7 @@ impl Bdd {
         if let Some(found) = self.node_table.get(&needle) {
             (*found, needle)
         } else {
-            let node_id = NodeId::new();
+            let node_id = NodeId::new(); // TODO the TaskId could be reused for NodeId, meaning I could get rid off the results map and use the nodes map directly
             self.nodes.insert(node_id, needle);
             self.node_table.insert(needle, node_id);
             (node_id, needle)
