@@ -1,4 +1,4 @@
-use crate::{Node, NodeId, Variable};
+use crate::sequential::{Node, NodeId, Variable};
 
 impl Variable {
     pub const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
