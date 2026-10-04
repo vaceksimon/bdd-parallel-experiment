@@ -1,4 +1,3 @@
-pub use crate::{Node, NodeId};
 use std::collections::HashMap;
 
 pub mod bdd;
@@ -7,9 +6,22 @@ pub mod bdd;
 /// but don't ship as part of the official API.
 #[cfg(test)]
 mod biodivine_conversions;
+pub mod common;
 /// These are larger "integration tests" that
 #[cfg(test)]
 mod comparison_tests;
+
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
+pub struct NodeId(usize);
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Variable(u32);
+
+#[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
+pub struct Node {
+    variable: Variable,
+    low_child: NodeId,
+    high_child: NodeId,
+}
 
 pub struct Bdd {
     nodes: Vec<Node>,

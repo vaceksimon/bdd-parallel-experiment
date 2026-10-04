@@ -1,5 +1,4 @@
-use crate::parallel::{Bdd, GeneratedTask, SuccessorResults, Task, TaskId};
-use crate::{Node, NodeId, Variable};
+use crate::parallel::{Bdd, GeneratedTask, Node, NodeId, SuccessorResults, Task, TaskId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
@@ -129,7 +128,6 @@ impl Bdd {
                                 generated_tasks.write().unwrap().insert(v, task_queue);
                             }
 
-                            // TODO figure out how to associate the successor nodes with its predecessor
                             pool.queue.push((low_a, low_b, low_task_id));
                             pool.queue.push((high_a, high_b, high_task_id));
                             pool.cvar.notify_one();

@@ -1,5 +1,5 @@
 use crate::sequential::Bdd;
-use crate::{Node, NodeId, Variable};
+use crate::sequential::{Node, NodeId, Variable};
 use std::cmp::min;
 use std::collections::HashMap;
 
