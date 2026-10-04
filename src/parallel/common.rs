@@ -1,5 +1,5 @@
 use crate::parallel::{Bdd, Node, NodeId, SuccessorResults, TaskId, Variable};
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 
 impl Variable {
     pub const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
@@ -14,12 +14,18 @@ impl Variable {
     }
 }
 
-impl NodeId {
-    pub const TERMINAL_0: Self = NodeId(0);
-    pub const TERMINAL_1: Self = NodeId(1);
+impl Default for NodeId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-    pub fn as_usize(self) -> usize {
-        self.0
+impl NodeId {
+    pub const TERMINAL_0: Self = NodeId(uuid!("00000000-0000-0000-0000-000000000000"));
+    pub const TERMINAL_1: Self = NodeId(uuid!("00000000-0000-0000-0000-000000000001"));
+
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
     }
 
     pub fn is_terminal(&self) -> bool {
