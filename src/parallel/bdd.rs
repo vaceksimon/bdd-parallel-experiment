@@ -39,10 +39,13 @@ impl Bdd {
     pub fn new() -> Self {
         let terminal_0 = Node::zero();
         let terminal_1 = Node::one();
+        let nodes = DashMap::new();
+        nodes.insert(NodeId::TERMINAL_0, terminal_0);
+        nodes.insert(NodeId::TERMINAL_1, terminal_1);
 
         Bdd {
-            nodes: Vec::from([terminal_0, terminal_1]),
-            _node_table: DashMap::new(),
+            nodes,
+            node_table: DashMap::new(),
             _task_cache: DashMap::new(),
         }
     }
@@ -94,8 +97,8 @@ impl Bdd {
                                 continue;
                             }
 
-                            let a = self.nodes[a_id.as_usize()];
-                            let b = self.nodes[b_id.as_usize()];
+                            let a = self.nodes.get(&a_id).unwrap();
+                            let b = self.nodes.get(&b_id).unwrap();
                             let v = min(a.variable, b.variable);
 
                             let (low_a, high_a) = if a.variable == v {
@@ -206,7 +209,7 @@ impl Bdd {
                                         task_id,
                                         (
                                             NodeId::TERMINAL_1,
-                                            self.nodes[NodeId::TERMINAL_1.as_usize()],
+                                            *self.nodes.get(&NodeId::TERMINAL_1).unwrap(),
                                         ),
                                     );
                                 } else {
@@ -214,7 +217,7 @@ impl Bdd {
                                         task_id,
                                         (
                                             NodeId::TERMINAL_0,
-                                            self.nodes[NodeId::TERMINAL_0.as_usize()],
+                                            *self.nodes.get(&NodeId::TERMINAL_0).unwrap(),
                                         ),
                                     );
                                 }
@@ -245,7 +248,7 @@ impl Bdd {
             });
         }
 
-        todo!("Process tasks")
+        todo!("Return the last remaining result")
     }
 
     // TODO apply and generating tasks could be run asynchronously. When generate_tasks creates one, it could notify apply to start working
@@ -258,11 +261,19 @@ impl Bdd {
 
     fn ensure_node(
         &self,
-        _variable: Variable,
-        _low_child: NodeId,
-        _high_child: NodeId,
+        variable: Variable,
+        low_child: NodeId,
+        high_child: NodeId,
     ) -> (NodeId, Node) {
-        todo!()
+        let needle = Node::new(variable, low_child, high_child);
+        if let Some(found) = self.node_table.get(&needle) {
+            (*found, needle)
+        } else {
+            let node_id = NodeId::new();
+            self.nodes.insert(node_id, needle);
+            self.node_table.insert(needle, node_id);
+            (node_id, needle)
+        }
     }
 }
 
@@ -273,41 +284,41 @@ mod tests {
 
     #[test]
     fn generating_tasks() {
-        let mut nodes: Vec<Node> = Vec::with_capacity(8);
+        let nodes = DashMap::new();
 
         let zero = Node::zero();
         let zero_id = NodeId::TERMINAL_0;
-        nodes.insert(zero_id.as_usize(), zero);
+        nodes.insert(zero_id, zero);
         let one = Node::one();
         let one_id = NodeId::TERMINAL_1;
-        nodes.insert(one_id.as_usize(), one);
+        nodes.insert(one_id, one);
 
         let a4 = Node::new(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let a4_id = NodeId(2);
-        nodes.insert(a4_id.as_usize(), a4);
+        let a4_id = NodeId::new();
+        nodes.insert(a4_id, a4);
 
         let a3 = Node::new(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let a3_id = NodeId(3);
-        nodes.insert(a3_id.as_usize(), a3);
+        let a3_id = NodeId::new();
+        nodes.insert(a3_id, a3);
         let a2 = Node::new(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let a2_id = NodeId(4);
-        nodes.insert(a2_id.as_usize(), a2);
+        let a2_id = NodeId::new();
+        nodes.insert(a2_id, a2);
 
         let a1 = Node::new(Variable(1), a2_id, a3_id);
-        let a1_id = NodeId(5);
-        nodes.insert(a1_id.as_usize(), a1);
+        let a1_id = NodeId::new();
+        nodes.insert(a1_id, a1);
 
         let b3 = Node::new(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let b3_id = NodeId(6);
-        nodes.insert(b3_id.as_usize(), b3);
+        let b3_id = NodeId::new();
+        nodes.insert(b3_id, b3);
 
         let _b2 = a4;
         let b2_id = a4_id;
         // nodes.insert(b2_id.as_usize(), b2); // avoid duplicities - node is identical to a4
 
         let b1 = Node::new(Variable(2), b2_id, b3_id);
-        let b1_id = NodeId(7);
-        nodes.insert(b1_id.as_usize(), b1);
+        let b1_id = NodeId::new();
+        nodes.insert(b1_id, b1);
 
         let mut bdd = Bdd::new();
         bdd.nodes = nodes;
@@ -322,7 +333,7 @@ mod tests {
         node_table.insert(b1, b1_id);
         // node_table.insert(b2, b2_id); // avoid duplicities - node is identical to a4
         node_table.insert(b3, b3_id);
-        bdd._node_table = node_table;
+        bdd.node_table = node_table;
 
         let task_set = bdd
             .generate_tasks(a1_id, b1_id, 5)
@@ -341,21 +352,21 @@ mod tests {
             })
             .collect();
         let expected_results = HashSet::from([
-            (NodeId(0), NodeId(0)),
-            (NodeId(0), NodeId(1)),
-            (NodeId(0), NodeId(2)),
-            (NodeId(0), NodeId(2)),
-            (NodeId(1), NodeId(0)),
-            (NodeId(1), NodeId(1)),
-            (NodeId(1), NodeId(2)),
-            (NodeId(1), NodeId(2)),
-            (NodeId(2), NodeId(6)),
-            (NodeId(2), NodeId(6)),
-            (NodeId(3), NodeId(7)),
-            (NodeId(3), NodeId(7)),
-            (NodeId(4), NodeId(7)),
-            (NodeId(4), NodeId(7)),
-            (NodeId(5), NodeId(7)),
+            (NodeId::TERMINAL_0, NodeId::TERMINAL_0),
+            (NodeId::TERMINAL_0, NodeId::TERMINAL_1),
+            (NodeId::TERMINAL_0, b2_id),
+            (NodeId::TERMINAL_0, b2_id),
+            (NodeId::TERMINAL_1, NodeId::TERMINAL_0),
+            (NodeId::TERMINAL_1, NodeId::TERMINAL_1),
+            (NodeId::TERMINAL_1, b2_id),
+            (NodeId::TERMINAL_1, b2_id),
+            (b2_id, b3_id),
+            (b2_id, b3_id),
+            (a3_id, b1_id),
+            (a3_id, b1_id),
+            (a2_id, b1_id),
+            (a2_id, b1_id),
+            (a1_id, b1_id),
         ]);
         assert_eq!(expected_results, task_set);
     }

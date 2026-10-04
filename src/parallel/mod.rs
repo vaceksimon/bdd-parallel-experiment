@@ -5,7 +5,7 @@ pub mod bdd;
 pub mod common;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
-pub struct NodeId(usize);
+pub struct NodeId(Uuid);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Variable(u32);
 
@@ -23,9 +23,9 @@ pub type GeneratedTask = (NodeId, NodeId, TaskId, SuccessorResults);
 pub struct SuccessorResults(TaskId, TaskId);
 
 pub struct Bdd {
-    nodes: Vec<Node>,
+    nodes: DashMap<NodeId, Node>,
     // existing
-    _node_table: DashMap<Node, NodeId>,
+    node_table: DashMap<Node, NodeId>,
     // finished
     _task_cache: DashMap<(NodeId, NodeId), NodeId>,
 }
