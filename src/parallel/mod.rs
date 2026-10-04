@@ -1,9 +1,9 @@
-use crate::{Node, NodeId, Variable};
+use crate::{Node, NodeId};
 use dashmap::DashMap;
 
 pub mod bdd;
 
-pub type Task = (NodeId, NodeId, Variable);
+pub type Task = (NodeId, NodeId);
 
 pub struct Bdd {
     nodes: Vec<Node>,
