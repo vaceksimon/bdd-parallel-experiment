@@ -1,4 +1,5 @@
-use crate::parallel::{Node, NodeId, Variable};
+use crate::parallel::{Bdd, Node, NodeId, SuccessorResults, TaskId, Variable};
+use uuid::Uuid;
 
 impl Variable {
     pub const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
@@ -58,5 +59,35 @@ impl Node {
             NodeId::TERMINAL_0,
             NodeId::TERMINAL_0,
         )
+    }
+}
+
+impl Default for Bdd {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Uuid> for TaskId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
+
+impl TaskId {
+    pub const TERMINAL: Self = Self(Uuid::nil());
+}
+
+impl SuccessorResults {
+    pub const TERMINAL: Self = Self(TaskId::TERMINAL, TaskId::TERMINAL);
+
+    pub fn new(a: TaskId, b: TaskId) -> Self {
+        Self(a, b)
+    }
+}
+
+impl From<SuccessorResults> for (TaskId, TaskId) {
+    fn from(value: SuccessorResults) -> Self {
+        (value.0, value.1)
     }
 }

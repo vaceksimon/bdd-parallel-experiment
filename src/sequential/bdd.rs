@@ -3,12 +3,6 @@ use crate::sequential::{Node, NodeId, Variable};
 use std::cmp::min;
 use std::collections::HashMap;
 
-impl Default for Bdd {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Bdd {
     pub fn new() -> Self {
         let terminal_0 = Node::zero();
