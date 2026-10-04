@@ -4,6 +4,10 @@ impl Variable {
     pub const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
     pub const UNDEFINED_VARIABLE: Variable = Variable(u32::MAX - 1);
 
+    pub fn is_terminal(&self) -> bool {
+        self == &Self::TERMINAL_VARIABLE
+    }
+
     pub fn is_undefined(&self) -> bool {
         self == &Self::UNDEFINED_VARIABLE
     }
