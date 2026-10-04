@@ -1,4 +1,4 @@
-use crate::sequential::{Node, NodeId, Variable};
+use crate::sequential::{Bdd, Node, NodeId, Variable};
 
 impl Variable {
     pub const TERMINAL_VARIABLE: Variable = Variable(u32::MAX);
@@ -58,5 +58,11 @@ impl Node {
             NodeId::TERMINAL_0,
             NodeId::TERMINAL_0,
         )
+    }
+}
+
+impl Default for Bdd {
+    fn default() -> Self {
+        Self::new()
     }
 }

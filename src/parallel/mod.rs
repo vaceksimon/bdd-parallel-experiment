@@ -29,27 +29,3 @@ pub struct Bdd {
     // finished
     _task_cache: DashMap<(NodeId, NodeId), NodeId>,
 }
-
-impl From<Uuid> for TaskId {
-    fn from(value: Uuid) -> Self {
-        Self(value)
-    }
-}
-
-impl TaskId {
-    pub const TERMINAL: Self = Self(Uuid::nil());
-}
-
-impl SuccessorResults {
-    pub const TERMINAL: Self = Self(TaskId::TERMINAL, TaskId::TERMINAL);
-
-    pub fn new(a: TaskId, b: TaskId) -> Self {
-        Self(a, b)
-    }
-}
-
-impl From<SuccessorResults> for (TaskId, TaskId) {
-    fn from(value: SuccessorResults) -> Self {
-        (value.0, value.1)
-    }
-}

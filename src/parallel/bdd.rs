@@ -35,12 +35,6 @@ struct WorkerPool2 {
     _cvar: Condvar,
 }
 
-impl Default for Bdd {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Bdd {
     pub fn new() -> Self {
         let terminal_0 = Node::zero();
