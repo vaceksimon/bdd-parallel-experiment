@@ -1,4 +1,4 @@
-use crate::parallel::{Bdd, Task};
+use crate::parallel::{Bdd, GeneratedTask, SuccessorResults, Task, TaskId};
 use crate::{Node, NodeId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
@@ -8,9 +8,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
+use uuid::Uuid;
 
 struct WorkerPool {
-    queue: SegQueue<(NodeId, NodeId)>,
+    queue: SegQueue<Task>,
 
     // Termination detection state
     is_done: AtomicBool,
@@ -20,6 +21,21 @@ struct WorkerPool {
     sleep_lock: Mutex<()>,
     cvar: Condvar,
 }
+
+struct WorkerPool2 {
+    // TODO rename
+    queue: SegQueue<GeneratedTask>,
+    results: DashMap<TaskId, (NodeId, Node)>,
+
+    // Termination detection state
+    is_done: AtomicBool,
+    idle_workers: AtomicUsize,
+
+    // Standard library locking primitives used purely for thread sleeping
+    _sleep_lock: Mutex<()>,
+    _cvar: Condvar,
+}
+
 impl Default for Bdd {
     fn default() -> Self {
         Self::new()
@@ -43,7 +59,7 @@ impl Bdd {
         a_id: NodeId,
         b_id: NodeId,
         total_workers: usize,
-    ) -> DashMap<Variable, SegQueue<Task>> {
+    ) -> DashMap<Variable, SegQueue<GeneratedTask>> {
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
             is_done: AtomicBool::new(false),
@@ -51,8 +67,8 @@ impl Bdd {
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id));
-        let generated_tasks: RwLock<DashMap<Variable, SegQueue<Task>>> =
+        pool.queue.push((a_id, b_id, Uuid::now_v7().into()));
+        let generated_tasks: RwLock<DashMap<Variable, SegQueue<GeneratedTask>>> =
             RwLock::new(DashMap::new());
         generated_tasks
             .write()
@@ -68,14 +84,19 @@ impl Bdd {
                             break;
                         }
 
-                        if let Some((a_id, b_id)) = pool.queue.pop() {
+                        if let Some((a_id, b_id, task_id)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 generated_tasks
                                     .read()
                                     .unwrap()
                                     .get(&Variable::TERMINAL_VARIABLE)
                                     .expect("A Queue for terminals should be present")
-                                    .push((a_id, b_id));
+                                    .push((
+                                        a_id,
+                                        b_id,
+                                        TaskId::TERMINAL,
+                                        SuccessorResults::TERMINAL,
+                                    ));
                                 // TODO at this moment a worker could be notified to start processing the predecessor
                                 continue;
                             }
@@ -96,17 +117,21 @@ impl Bdd {
                                 (b_id, b_id)
                             };
 
-                            if let Some(task_queue) = generated_tasks.read().unwrap().get(&v) {
-                                task_queue.push((a_id, b_id));
+                            let low_task_id = Uuid::now_v7().into();
+                            let high_task_id = Uuid::now_v7().into();
+                            let successor_results_id =
+                                SuccessorResults::new(low_task_id, high_task_id);
+                            if let Some(queue) = generated_tasks.read().unwrap().get(&v) {
+                                queue.push((a_id, b_id, task_id, successor_results_id));
                             } else {
-                                let task_queue: SegQueue<Task> = SegQueue::new();
-                                task_queue.push((a_id, b_id));
+                                let task_queue: SegQueue<GeneratedTask> = SegQueue::new();
+                                task_queue.push((a_id, b_id, task_id, successor_results_id));
                                 generated_tasks.write().unwrap().insert(v, task_queue);
                             }
 
                             // TODO figure out how to associate the successor nodes with its predecessor
-                            pool.queue.push((low_a, low_b));
-                            pool.queue.push((high_a, high_b));
+                            pool.queue.push((low_a, low_b, low_task_id));
+                            pool.queue.push((high_a, high_b, high_task_id));
                             pool.cvar.notify_one();
 
                             continue;
@@ -150,7 +175,7 @@ impl Bdd {
 
     fn process_tasks(
         &mut self,
-        tasks: DashMap<Variable, SegQueue<Task>>,
+        tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
         total_workers: usize,
     ) -> (NodeId, Node) {
         let mut keys = BTreeSet::new();
@@ -158,35 +183,70 @@ impl Bdd {
             keys.insert(*item.key());
         });
 
-        for variable in keys.into_iter().rev() {
-            let (_variable, queue) = tasks.remove(&variable).unwrap();
+        let mut pool = Arc::new(WorkerPool2 {
+            queue: SegQueue::new(),
+            results: DashMap::new(),
+            is_done: AtomicBool::new(false),
+            idle_workers: AtomicUsize::new(0),
+            _sleep_lock: Mutex::new(()),
+            _cvar: Condvar::new(),
+        });
 
-            let pool = Arc::new(WorkerPool {
-                queue,
-                is_done: AtomicBool::new(false),
-                idle_workers: AtomicUsize::new(0),
-                sleep_lock: Mutex::new(()),
-                cvar: Condvar::new(),
-            });
+        for variable in keys.into_iter().rev() {
+            let (variable, queue) = tasks.remove(&variable).unwrap();
+
+            // reset state
+            pool.is_done.store(false, Ordering::Release);
+            pool.idle_workers.store(0, Ordering::Release);
+            Arc::get_mut(&mut pool).unwrap().queue = queue;
 
             thread::scope(|s| {
                 for _ in 0..total_workers {
                     s.spawn(|| {
                         let pool = pool.clone();
-                        loop {
-                            if pool.is_done.load(Ordering::Acquire) {
-                                break;
-                            }
-                            if let Some((a_id, b_id)) = pool.queue.pop() {
-                                if a_id.is_terminal() && b_id.is_terminal() {
-                                    if a_id.is_one() && b_id.is_one() {
-                                        todo!()
-                                    } else {
-                                        todo!()
-                                    }
+
+                        while let Some((a_id, b_id, task_id, successor_results)) = pool.queue.pop()
+                        {
+                            // TODO not sure if while is correct here
+                            if a_id.is_terminal() && b_id.is_terminal() {
+                                if a_id.is_one() && b_id.is_one() {
+                                    pool.results.insert(
+                                        task_id,
+                                        (
+                                            NodeId::TERMINAL_1,
+                                            self.nodes[NodeId::TERMINAL_1.as_usize()],
+                                        ),
+                                    );
+                                } else {
+                                    pool.results.insert(
+                                        task_id,
+                                        (
+                                            NodeId::TERMINAL_0,
+                                            self.nodes[NodeId::TERMINAL_0.as_usize()],
+                                        ),
+                                    );
                                 }
-                                todo!("Terminate")
+                                continue;
                             }
+
+                            let (low_result_id, high_result_id) = successor_results.into();
+
+                            let (_, h) = pool
+                                .results
+                                .remove(&high_result_id)
+                                .expect("High result not present");
+                            let (_, l) = pool
+                                .results
+                                .remove(&low_result_id)
+                                .expect("Low result not present");
+
+                            let (c_node_id, c) = if l != h {
+                                self.ensure_node(variable, l.0, h.0) // TODO
+                            } else {
+                                l
+                            };
+
+                            pool.results.insert(task_id, (c_node_id, c));
                         }
                     });
                 }
@@ -202,6 +262,15 @@ impl Bdd {
         let tasks = self.generate_tasks(a_id, b_id, total_workers);
 
         self.process_tasks(tasks, total_workers)
+    }
+
+    fn ensure_node(
+        &self,
+        _variable: Variable,
+        _low_child: NodeId,
+        _high_child: NodeId,
+    ) -> (NodeId, Node) {
+        todo!()
     }
 }
 
@@ -270,7 +339,7 @@ mod tests {
                 let queue = value.value();
                 let mut new_queue = Vec::new();
                 while !queue.is_empty() {
-                    let (a, b) = queue.pop().unwrap();
+                    let (a, b, _, _) = queue.pop().unwrap();
                     new_queue.push((a, b));
                 }
                 // print!("Tasks for Variable: {:?}:[ ", value.key());
