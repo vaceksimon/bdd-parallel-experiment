@@ -27,6 +27,4 @@ pub struct Bdd {
     nodes: DashMap<NodeId, Node>,
     // existing
     node_table: DashMap<Node, NodeId>,
-    // finished
-    _task_cache: DashMap<(NodeId, NodeId), NodeId>,
 }

@@ -20,18 +20,9 @@ struct WorkerPool {
     cvar: Condvar,
 }
 
-struct WorkerPool2 {
-    // TODO rename
+struct ProcessingState {
     queue: SegQueue<GeneratedTask>,
     results: DashMap<TaskId, (NodeId, Node)>,
-
-    // Termination detection state
-    is_done: AtomicBool,
-    idle_workers: AtomicUsize,
-
-    // Standard library locking primitives used purely for thread sleeping
-    _sleep_lock: Mutex<()>,
-    _cvar: Condvar,
 }
 
 impl Bdd {
@@ -45,7 +36,6 @@ impl Bdd {
         Bdd {
             nodes,
             node_table: DashMap::new(),
-            _task_cache: DashMap::new(),
         }
     }
 
@@ -172,21 +162,14 @@ impl Bdd {
             keys.insert(*item.key());
         });
 
-        let mut pool = Arc::new(WorkerPool2 {
+        let mut pool = Arc::new(ProcessingState {
             queue: SegQueue::new(),
             results: DashMap::new(),
-            is_done: AtomicBool::new(false),
-            idle_workers: AtomicUsize::new(0),
-            _sleep_lock: Mutex::new(()),
-            _cvar: Condvar::new(),
         });
 
         for variable in keys.into_iter().rev() {
             let (variable, queue) = tasks.remove(&variable).unwrap();
 
-            // reset state
-            pool.is_done.store(false, Ordering::Release);
-            pool.idle_workers.store(0, Ordering::Release);
             Arc::get_mut(&mut pool).unwrap().queue = queue;
 
             thread::scope(|s| {
@@ -196,7 +179,6 @@ impl Bdd {
 
                         while let Some((a_id, b_id, task_id, successor_results)) = pool.queue.pop()
                         {
-                            // TODO not sure if while is correct here
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
                                     pool.results.insert(
