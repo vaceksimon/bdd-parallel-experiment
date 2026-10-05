@@ -20,6 +20,7 @@ pub struct Node {
 pub struct TaskId(Uuid);
 pub type Task = (NodeId, NodeId, TaskId);
 pub type GeneratedTask = (NodeId, NodeId, TaskId, SuccessorResults);
+#[derive(Debug)]
 pub struct SuccessorResults(TaskId, TaskId);
 
 pub struct Bdd {
