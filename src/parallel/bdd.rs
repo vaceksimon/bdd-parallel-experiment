@@ -81,18 +81,13 @@ impl Bdd {
 
                         if let Some((a_id, b_id, task_id)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
+                                // TODO terminals could be processed here already
                                 generated_tasks
                                     .read()
                                     .unwrap()
                                     .get(&Variable::TERMINAL_VARIABLE)
                                     .expect("A Queue for terminals should be present")
-                                    .push((
-                                        a_id,
-                                        b_id,
-                                        TaskId::TERMINAL,
-                                        SuccessorResults::TERMINAL,
-                                    ));
-                                // TODO at this moment a worker could be notified to start processing the predecessor
+                                    .push((a_id, b_id, task_id, SuccessorResults::TERMINAL));
                                 continue;
                             }
 
@@ -247,7 +242,14 @@ impl Bdd {
             });
         }
 
-        todo!("Return the last remaining result")
+        assert_eq!(pool.results.len(), 1);
+        *Arc::into_inner(pool)
+            .unwrap()
+            .results
+            .iter()
+            .next()
+            .unwrap()
+            .value()
     }
 
     // TODO apply and generating tasks could be run asynchronously. When generate_tasks creates one, it could notify apply to start working
@@ -268,7 +270,8 @@ impl Bdd {
         if let Some(found) = self.node_table.get(&needle) {
             (*found, needle)
         } else {
-            let node_id = NodeId::new(); // TODO the TaskId could be reused for NodeId, meaning I could get rid off the results map and use the nodes map directly
+            // TODO the TaskId could be reused for NodeId, meaning I could get rid off the results map and use the nodes map directly
+            let node_id = NodeId::new();
             self.nodes.insert(node_id, needle);
             self.node_table.insert(needle, node_id);
             (node_id, needle)
@@ -368,5 +371,36 @@ mod tests {
             (a1_id, b1_id),
         ]);
         assert_eq!(expected_results, task_set);
+    }
+
+    #[test]
+    fn apply() {
+        // Two BDDs taken from Lukas Urban's Thesis
+        // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
+        let mut bdd = Bdd::new();
+
+        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
+        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
+        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
+
+        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
+        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
+        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
+
+        let (_, c1) = bdd.apply(a1_id, b1_id);
+        assert_eq!(c1.variable, Variable(1));
+        assert_eq!(c1.low_child, NodeId::TERMINAL_0);
+
+        let c2 = bdd.nodes.get(&c1.high_child).unwrap();
+        assert_eq!(c2.variable, Variable(2));
+        assert_eq!(c2.high_child, NodeId::TERMINAL_0);
+
+        let c3 = bdd.nodes.get(&c2.low_child).unwrap();
+        assert_eq!(c3.variable, Variable(3));
+        assert_eq!(c3.low_child, NodeId::TERMINAL_0);
+        assert_eq!(c3.high_child, NodeId::TERMINAL_1);
+
+        assert_eq!(bdd.nodes.len(), 10);
     }
 }
