@@ -2,7 +2,11 @@ use dashmap::DashMap;
 use uuid::Uuid;
 
 pub mod bdd;
+#[cfg(test)]
+mod biodivine_conversions;
 pub mod common;
+#[cfg(test)]
+mod comparison_tests;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
 pub struct NodeId(Uuid);
