@@ -1,23 +1,65 @@
 use crate::parallel::{Bdd, Node, NodeId, Variable};
 use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
 use rand::RngExt;
+use std::collections::HashMap;
 
 impl From<biodivine_lib_bdd::Bdd> for Bdd {
     fn from(value: biodivine_lib_bdd::Bdd) -> Self {
-        // The two BDD implementations are very similar, meaning the translation is mostly
-        // just moving data into the right structs:
-
-        let result = Bdd::new();
-        for biodivine_node in value.to_nodes() {
-            if biodivine_node.is_terminal() {
-                continue; // Skip terminal nodes (these are already created for us).
+        enum IdConversionResult {
+            NewId(NodeId),
+            ExistingId(NodeId),
+        }
+        impl From<IdConversionResult> for NodeId {
+            fn from(value: IdConversionResult) -> Self {
+                match value {
+                    IdConversionResult::NewId(id) => id,
+                    IdConversionResult::ExistingId(id) => id,
+                }
             }
-            let node: Node = biodivine_node.into();
-            let node_id = NodeId::new();
-            result.nodes.insert(node_id, node);
-            result.node_table.insert(node, node_id);
         }
 
+        let mut converted_node_ids: HashMap<BddPointer, NodeId> = HashMap::new();
+
+        let mut get_node_id = |node_id: BddPointer| -> IdConversionResult {
+            if let Some(id) = converted_node_ids.get(&node_id) {
+                IdConversionResult::ExistingId(*id)
+            } else {
+                let new_id = NodeId::new();
+                converted_node_ids.insert(node_id, new_id);
+                IdConversionResult::NewId(new_id)
+            }
+        };
+
+        let result = Bdd::new();
+
+        let mut stack: Vec<BddPointer> = Vec::with_capacity(value.size());
+        stack.push(value.root_pointer());
+        let biodivine_nodes = value.to_nodes();
+
+        while let Some(biodivine_node_id) = stack.pop() {
+            let biodivine_node = biodivine_nodes[biodivine_node_id.to_index()];
+
+            let biodivine_low_node_id = biodivine_node.low_link;
+            let biodivine_high_node_id = biodivine_node.high_link;
+            stack.push(biodivine_low_node_id);
+            stack.push(biodivine_high_node_id);
+
+            if let IdConversionResult::NewId(converted_node_id) = get_node_id(biodivine_node_id) {
+                let converted_variable = biodivine_node.var.into();
+                let converted_low_node_id = get_node_id(biodivine_low_node_id).into();
+                let converted_high_node_id = get_node_id(biodivine_high_node_id).into();
+
+                let converted_node = Node::new(
+                    converted_variable,
+                    converted_low_node_id,
+                    converted_high_node_id,
+                );
+                result.nodes.insert(converted_node_id, converted_node);
+                result.node_table.insert(converted_node, converted_node_id);
+            } else {
+                continue;
+            }
+        }
         result
     }
 }
@@ -34,16 +76,6 @@ impl From<Bdd> for biodivine_lib_bdd::Bdd {
         }
         biodivine_lib_bdd::Bdd::from_nodes(&nodes)
             .unwrap_or_else(|message| panic!("Correctness violation: {message}"))
-    }
-}
-
-impl From<BddNode> for Node {
-    fn from(value: BddNode) -> Self {
-        Node::new(
-            value.var.into(),
-            value.low_link.into(),
-            value.high_link.into(),
-        )
     }
 }
 
@@ -72,12 +104,6 @@ impl From<Variable> for BddVariable {
         BddVariable::from_index(
             usize::try_from(value.0).expect("Invariant violation: usize is smaller than 32 bits."),
         )
-    }
-}
-
-impl From<BddPointer> for NodeId {
-    fn from(_value: BddPointer) -> Self {
-        NodeId::new() // TODO wrong
     }
 }
 
