@@ -24,7 +24,16 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
             if let Some(id) = converted_node_ids.get(&node_id) {
                 IdConversionResult::ExistingId(*id)
             } else {
-                let new_id = NodeId::new();
+                let new_id = if node_id.is_terminal() {
+                    if node_id.is_one() {
+                        NodeId::TERMINAL_1
+                    } else {
+                        NodeId::TERMINAL_0
+                    }
+                } else {
+                    NodeId::new()
+                };
+
                 converted_node_ids.insert(node_id, new_id);
                 IdConversionResult::NewId(new_id)
             }
