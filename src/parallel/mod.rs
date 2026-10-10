@@ -27,6 +27,7 @@ pub type GeneratedTask = (NodeId, NodeId, TaskId, SuccessorResults);
 #[derive(Debug)]
 pub struct SuccessorResults(TaskId, TaskId);
 
+#[derive(Debug)]
 pub struct Bdd {
     nodes: DashMap<NodeId, Node>,
     // existing

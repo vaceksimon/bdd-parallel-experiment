@@ -597,6 +597,23 @@ mod tests {
         let id_map = bdd_a.merge(&bdd_b);
         let (_, actual) = bdd_a.apply(a1_id, id_map[&b1_id]);
 
-        assert_eq!(actual, expected);
+        // Assertions
+        assert_eq!(actual.variable, expected.variable);
+        assert_eq!(actual.low_child, NodeId::TERMINAL_0);
+        assert_eq!(actual.low_child, expected.low_child);
+
+        let expected = *bdd_ab.nodes.get(&expected.high_child).unwrap().value();
+        let actual = *bdd_a.nodes.get(&actual.high_child).unwrap().value();
+        assert_eq!(actual.variable, expected.variable);
+        assert_eq!(actual.high_child, NodeId::TERMINAL_0);
+        assert_eq!(actual.high_child, expected.high_child);
+
+        let expected = *bdd_ab.nodes.get(&expected.low_child).unwrap().value();
+        let actual = *bdd_a.nodes.get(&actual.low_child).unwrap().value();
+        assert_eq!(actual.variable, expected.variable);
+        assert_eq!(actual.high_child, NodeId::TERMINAL_1);
+        assert_eq!(actual.high_child, expected.high_child);
+        assert_eq!(actual.low_child, NodeId::TERMINAL_0);
+        assert_eq!(actual.low_child, expected.low_child);
     }
 }
