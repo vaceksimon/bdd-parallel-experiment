@@ -1,4 +1,4 @@
-use crate::parallel::{Bdd, NodeId};
+use crate::parallel::{Bdd, Node, NodeId};
 use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode as BiodivineNode};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -58,7 +58,15 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
 
     let (biodivine, root_biodivine) = get_biodivine_root(biodivine);
     let bdd: Bdd = biodivine.into();
-    let root = *bdd.node_table.get(&root_biodivine.into()).unwrap().value();
+    let root = bdd
+        .node_table
+        .iter()
+        .filter(|pair| pair.key().variable == root_biodivine.var.into())
+        .map(|pair| (*pair.key(), *pair.value()))
+        .collect::<Vec<(Node, NodeId)>>();
+    assert_eq!(root.len(), 1);
+    // TODO stale se spatne sestavuje bdd, root je asi jeste ok, ale hned dalsi naslednik ma ID, ktery neexistuje v bdd.nodes
+    let root = root[0].1;
 
     (bdd, root)
 }
@@ -84,7 +92,7 @@ fn extracted_to_biodivine(bdd: &Bdd, root: NodeId) -> BiodivineBdd {
 
 fn get_biodivine_root(bdd: BiodivineBdd) -> (BiodivineBdd, BiodivineNode) {
     let root_index = bdd.root_pointer().to_index();
-    let expected_nodes = bdd.to_nodes();
+    let expected_nodes = bdd.to_nodes(); // TODO bdd.clone() by mohlo byt lepsi
 
     let root = expected_nodes[root_index];
     let reconstructed_bdd = BiodivineBdd::from_nodes(&expected_nodes).unwrap();
@@ -112,11 +120,15 @@ fn compare_to_biodivine() {
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
             let expected_bdd: Bdd = expected.into();
-            let expected_root = *expected_bdd
+            let root = expected_bdd
                 .node_table
-                .get(&expected_root.into())
-                .unwrap()
-                .value();
+                .iter()
+                .filter(|pair| pair.key().variable == expected_root.var.into())
+                .map(|pair| (*pair.key(), *pair.value()))
+                .collect::<Vec<(Node, NodeId)>>();
+            assert_eq!(root.len(), 1);
+            // TODO stale se spatne sestavuje bdd, root je asi jeste ok, ale hned dalsi naslednik ma ID, ktery neexistuje v bdd.nodes
+            let expected_root = root[0].1;
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
 
             assert_eq!(

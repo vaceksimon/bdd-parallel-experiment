@@ -235,9 +235,9 @@ impl Bdd {
             .value()
     }
 
-    // TODO apply and generating tasks could be run asynchronously. When generate_tasks creates one, it could notify apply to start working
     pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         let total_workers = 3;
+        // TODO preprocessing - zjistit vsechny promenne, abych si mohl nainicializovat vsechny queue
         let tasks = self.generate_tasks(a_id, b_id, total_workers);
 
         self.process_tasks(tasks, total_workers)
