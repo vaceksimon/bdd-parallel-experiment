@@ -87,7 +87,7 @@ fn merged_apply(a_path: &Path, b_path: &Path) -> (Bdd, NodeId) {
 /// Extract the subgraph at `root` and convert it to `biodivine-lib-bdd`.
 fn extracted_to_biodivine(bdd: &Bdd, root: NodeId) -> BiodivineBdd {
     let (extracted, _) = bdd.extract(root);
-    extracted.into()
+    extracted.into_biodivine_bdd(root)
 }
 
 fn get_biodivine_root(bdd: BiodivineBdd) -> (BiodivineBdd, BiodivineNode) {
