@@ -49,8 +49,12 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
 
             let biodivine_low_node_id = biodivine_node.low_link;
             let biodivine_high_node_id = biodivine_node.high_link;
-            stack.push(biodivine_high_node_id);
-            stack.push(biodivine_low_node_id);
+            if !biodivine_high_node_id.is_terminal() {
+                stack.push(biodivine_high_node_id);
+            }
+            if !biodivine_low_node_id.is_terminal() {
+                stack.push(biodivine_low_node_id);
+            }
 
             if let IdConversionResult::NewId(converted_node_id) = get_node_id(biodivine_node_id) {
                 let converted_variable = biodivine_node.var.into();
