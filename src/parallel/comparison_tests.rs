@@ -109,6 +109,7 @@ fn compare_to_biodivine() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
+            println!("Processing files: {:?}, {:?}", i, j);
             let (bdd_actual, root_actual) = merged_apply(&files[i], &files[j]);
 
             let biodivine_a = load_biodivine_bdd(&files[i]);
@@ -127,7 +128,6 @@ fn compare_to_biodivine() {
                 .map(|pair| (*pair.key(), *pair.value()))
                 .collect::<Vec<(Node, NodeId)>>();
             assert_eq!(root.len(), 1);
-            // TODO stale se spatne sestavuje bdd, root je asi jeste ok, ale hned dalsi naslednik ma ID, ktery neexistuje v bdd.nodes
             let expected_root = root[0].1;
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
 
