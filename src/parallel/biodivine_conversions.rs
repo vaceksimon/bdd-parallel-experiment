@@ -100,15 +100,16 @@ impl Bdd {
         stack.push(root);
 
         while let Some(node_id) = stack.pop() {
-            let node = *self.nodes.get(&node_id).unwrap().value();
-
-            let low_node_id = node.low_child;
-            let high_node_id = node.high_child;
-            stack.push(high_node_id);
-            stack.push(low_node_id);
-
             let converted_node_id = Self::convert_node_id(node_id, &mut id_map, &mut current_id);
+
             if converted_node_id.to_index() > current_id {
+                let node = *self.nodes.get(&node_id).unwrap().value();
+
+                let low_node_id = node.low_child;
+                let high_node_id = node.high_child;
+                stack.push(high_node_id);
+                stack.push(low_node_id);
+
                 let converted_variable = node.variable.into();
                 let converted_low_node_id =
                     Self::convert_node_id(node.low_child, &mut id_map, &mut current_id);
