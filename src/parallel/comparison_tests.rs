@@ -83,7 +83,7 @@ fn load_biodivine_bdd(path: &Path) -> BiodivineBdd {
 fn load_bdd(path: &Path) -> (Bdd, NodeId) {
     let biodivine = load_biodivine_bdd(path);
 
-    let (biodivine, root_biodivine) = get_biodivine_root(biodivine);
+    let root_biodivine = get_biodivine_root(&biodivine);
     let bdd: Bdd = biodivine.into();
     let root = bdd
         .node_table
@@ -92,7 +92,6 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
         .map(|pair| (*pair.key(), *pair.value()))
         .collect::<Vec<(Node, NodeId)>>();
     assert_eq!(root.len(), 1);
-    // TODO stale se spatne sestavuje bdd, root je asi jeste ok, ale hned dalsi naslednik ma ID, ktery neexistuje v bdd.nodes
     let root = root[0].1;
 
     (bdd, root)
@@ -117,13 +116,10 @@ fn extracted_to_biodivine(bdd: &Bdd, root: NodeId) -> BiodivineBdd {
     extracted.into_biodivine_bdd(extracted_root)
 }
 
-fn get_biodivine_root(bdd: BiodivineBdd) -> (BiodivineBdd, BiodivineNode) {
+fn get_biodivine_root(bdd: &BiodivineBdd) -> BiodivineNode {
     let root_index = bdd.root_pointer().to_index();
-    let expected_nodes = bdd.to_nodes(); // TODO bdd.clone() by mohlo byt lepsi
-
-    let root = expected_nodes[root_index];
-    let reconstructed_bdd = BiodivineBdd::from_nodes(&expected_nodes).unwrap();
-    (reconstructed_bdd, root)
+    let expected_nodes = bdd.clone().to_nodes();
+    expected_nodes[root_index]
 }
 
 #[test]
@@ -142,7 +138,7 @@ fn compare_to_biodivine() {
             let biodivine_a = load_biodivine_bdd(&files[i]);
             let biodivine_b = load_biodivine_bdd(&files[j]);
             let expected: BiodivineBdd = biodivine_a.and(&biodivine_b);
-            let (expected, expected_root) = get_biodivine_root(expected);
+            let expected_root = get_biodivine_root(&expected);
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
             let expected_bdd: Bdd = expected.into();
