@@ -9,12 +9,10 @@ const MAX_INPUT_NODES: usize = 100;
 
 /// Walks through the BDD and checks that all referenced nodes actually exist
 fn sanity_check(bdd: &Bdd, root: NodeId) {
-    println!("Sanity check for root node: {:?}", root);
     let mut stack = Vec::with_capacity(bdd.nodes.len());
     stack.push(root);
 
     while let Some(node_id) = stack.pop() {
-        println!("{:?}", node_id);
         let node = *bdd
             .nodes
             .get(&node_id)
@@ -22,15 +20,12 @@ fn sanity_check(bdd: &Bdd, root: NodeId) {
             .value();
         let high_child = node.high_child;
         if !high_child.is_terminal() {
-            println!("high_child: {:?}", high_child);
             stack.push(high_child);
         }
         let low_child = node.low_child;
         if !low_child.is_terminal() {
-            println!("low_child: {:?}", low_child);
             stack.push(low_child);
         }
-        println!()
     }
 }
 
@@ -101,6 +96,8 @@ fn merged_apply(a_path: &Path, b_path: &Path) -> (Bdd, NodeId) {
     let id_map = merged.merge(&bdd_b);
     let b_root_merged = id_map[&b_root];
 
+    sanity_check(&merged, a_root);
+    sanity_check(&merged, b_root_merged);
     let (result_root, _) = merged.apply(a_root, b_root_merged);
     (merged, result_root)
 }
