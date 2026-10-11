@@ -6,6 +6,33 @@ use std::path::{Path, PathBuf};
 /// Only test BDDs with at most this many nodes (including terminals).
 const MAX_INPUT_NODES: usize = 100;
 
+/// Walks through the BDD and checks that all referenced nodes actually exist
+fn sanity_check(bdd: &Bdd, root: NodeId) {
+    println!("Sanity check for root node: {:?}", root);
+    let mut stack = Vec::with_capacity(bdd.nodes.len());
+    stack.push(root);
+
+    while let Some(node_id) = stack.pop() {
+        println!("{:?}", node_id);
+        let node = *bdd
+            .nodes
+            .get(&node_id)
+            .expect("Sanity check failed")
+            .value();
+        let high_child = node.high_child;
+        if !high_child.is_terminal() {
+            println!("high_child: {:?}", high_child);
+            stack.push(high_child);
+        }
+        let low_child = node.low_child;
+        if !low_child.is_terminal() {
+            println!("low_child: {:?}", low_child);
+            stack.push(low_child);
+        }
+        println!()
+    }
+}
+
 /// Path to the `test-data` directory at the crate root.
 fn test_data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-data")
@@ -86,8 +113,8 @@ fn merged_apply(a_path: &Path, b_path: &Path) -> (Bdd, NodeId) {
 
 /// Extract the subgraph at `root` and convert it to `biodivine-lib-bdd`.
 fn extracted_to_biodivine(bdd: &Bdd, root: NodeId) -> BiodivineBdd {
-    let (extracted, _) = bdd.extract(root);
-    extracted.into_biodivine_bdd(root)
+    let (extracted, extracted_root) = bdd.extract(root);
+    extracted.into_biodivine_bdd(extracted_root)
 }
 
 fn get_biodivine_root(bdd: BiodivineBdd) -> (BiodivineBdd, BiodivineNode) {
@@ -109,15 +136,13 @@ fn compare_to_biodivine() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
-            println!("Processing files: {:?}, {:?}", i, j);
             let (bdd_actual, root_actual) = merged_apply(&files[i], &files[j]);
+            sanity_check(&bdd_actual, root_actual);
 
             let biodivine_a = load_biodivine_bdd(&files[i]);
             let biodivine_b = load_biodivine_bdd(&files[j]);
             let expected: BiodivineBdd = biodivine_a.and(&biodivine_b);
-            // ======
             let (expected, expected_root) = get_biodivine_root(expected);
-            // ======
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
             let expected_bdd: Bdd = expected.into();
@@ -129,6 +154,8 @@ fn compare_to_biodivine() {
                 .collect::<Vec<(Node, NodeId)>>();
             assert_eq!(root.len(), 1);
             let expected_root = root[0].1;
+            sanity_check(&expected_bdd, expected_root);
+
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
 
             assert_eq!(
