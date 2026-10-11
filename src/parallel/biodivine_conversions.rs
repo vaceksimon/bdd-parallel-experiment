@@ -4,24 +4,11 @@ use std::collections::HashMap;
 
 impl From<biodivine_lib_bdd::Bdd> for Bdd {
     fn from(value: biodivine_lib_bdd::Bdd) -> Self {
-        enum IdConversionResult {
-            NewId(NodeId),
-            ExistingId(NodeId),
-        }
-        impl From<IdConversionResult> for NodeId {
-            fn from(value: IdConversionResult) -> Self {
-                match value {
-                    IdConversionResult::NewId(id) => id,
-                    IdConversionResult::ExistingId(id) => id,
-                }
-            }
-        }
-
         let mut converted_node_ids: HashMap<BddPointer, NodeId> = HashMap::new();
 
-        let mut get_node_id = |node_id: BddPointer| -> IdConversionResult {
+        let mut get_node_id = |node_id: BddPointer| -> NodeId {
             if let Some(id) = converted_node_ids.get(&node_id) {
-                IdConversionResult::ExistingId(*id)
+                *id
             } else {
                 let new_id = if node_id.is_terminal() {
                     if node_id.is_one() {
@@ -34,7 +21,7 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
                 };
 
                 converted_node_ids.insert(node_id, new_id);
-                IdConversionResult::NewId(new_id)
+                new_id
             }
         };
 
@@ -56,10 +43,11 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
                 stack.push(biodivine_low_node_id);
             }
 
-            if let IdConversionResult::NewId(converted_node_id) = get_node_id(biodivine_node_id) {
+            let converted_node_id = get_node_id(biodivine_node_id);
+            if result.nodes.get(&converted_node_id).is_none() {
                 let converted_variable = biodivine_node.var.into();
-                let converted_low_node_id = get_node_id(biodivine_low_node_id).into();
-                let converted_high_node_id = get_node_id(biodivine_high_node_id).into();
+                let converted_low_node_id = get_node_id(biodivine_low_node_id);
+                let converted_high_node_id = get_node_id(biodivine_high_node_id);
 
                 let converted_node = Node::new(
                     converted_variable,
@@ -78,26 +66,13 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
 
 impl Bdd {
     pub(crate) fn into_biodivine_bdd(self, root: NodeId) -> biodivine_lib_bdd::Bdd {
-        enum IdConversionResult {
-            NewId(BddPointer),
-            ExistingId(BddPointer),
-        }
-        impl From<IdConversionResult> for BddPointer {
-            fn from(value: IdConversionResult) -> Self {
-                match value {
-                    IdConversionResult::NewId(id) => id,
-                    IdConversionResult::ExistingId(id) => id,
-                }
-            }
-        }
-
         let mut converted_node_ids: HashMap<NodeId, BddPointer> = HashMap::new();
         let mut nodes: Vec<BddNode> = vec![BddNode::mk_zero(u16::MAX), BddNode::mk_one(u16::MAX)];
         let mut current_id: usize = 2;
 
-        let mut get_node_id = |node_id: NodeId| -> IdConversionResult {
+        let mut get_node_id = |node_id: NodeId, current_id: &mut usize| -> BddPointer {
             if let Some(id) = converted_node_ids.get(&node_id) {
-                IdConversionResult::ExistingId(*id)
+                *id
             } else {
                 let new_id = if node_id.is_terminal() {
                     if node_id.is_one() {
@@ -106,13 +81,13 @@ impl Bdd {
                         BddPointer::zero()
                     }
                 } else {
-                    let new_id = BddPointer::from_index(current_id);
-                    current_id += 1;
+                    let new_id = BddPointer::from_index(*current_id);
+                    *current_id += 1;
                     new_id
                 };
 
                 converted_node_ids.insert(node_id, new_id);
-                IdConversionResult::NewId(new_id)
+                new_id
             }
         };
 
@@ -127,10 +102,11 @@ impl Bdd {
             stack.push(high_node_id);
             stack.push(low_node_id);
 
-            if let IdConversionResult::NewId(converted_node_id) = get_node_id(node_id) {
+            let converted_node_id = get_node_id(node_id, &mut current_id);
+            if converted_node_id.to_index() > current_id {
                 let converted_variable = node.variable.into();
-                let converted_low_node_id = get_node_id(node.low_child).into();
-                let converted_high_node_id = get_node_id(node.high_child).into();
+                let converted_low_node_id = get_node_id(node.low_child, &mut current_id);
+                let converted_high_node_id = get_node_id(node.high_child, &mut current_id);
                 nodes.insert(
                     converted_node_id.to_index(),
                     BddNode::mk_node(
