@@ -1,4 +1,5 @@
-use crate::parallel::{Bdd, Node, NodeId};
+use crate::parallel::biodivine_conversions::biodivine_bdd_into_bdd;
+use crate::parallel::{Bdd, Node, NodeId, Variable};
 use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode as BiodivineNode};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -84,15 +85,9 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
     let biodivine = load_biodivine_bdd(path);
 
     let root_biodivine = get_biodivine_root(&biodivine);
-    let bdd: Bdd = biodivine.into();
-    let root = bdd
-        .node_table
-        .iter()
-        .filter(|pair| pair.key().variable == root_biodivine.var.into())
-        .map(|pair| (*pair.key(), *pair.value()))
-        .collect::<Vec<(Node, NodeId)>>();
-    assert_eq!(root.len(), 1);
-    let root = root[0].1;
+
+    let bdd: Bdd = biodivine_bdd_into_bdd(biodivine);
+    let root = get_root(&bdd, root_biodivine.var.into());
 
     (bdd, root)
 }
@@ -122,6 +117,19 @@ fn get_biodivine_root(bdd: &BiodivineBdd) -> BiodivineNode {
     expected_nodes[root_index]
 }
 
+/// Looks up the root node from the BDD for a given variable.
+/// Operates on the fact that the root node is the only node with the given variable.
+fn get_root(bdd: &Bdd, root_var: Variable) -> NodeId {
+    let root = bdd
+        .node_table
+        .iter()
+        .filter(|pair| pair.key().variable == root_var)
+        .map(|pair| (*pair.key(), *pair.value()))
+        .collect::<Vec<(Node, NodeId)>>();
+    assert_eq!(root.len(), 1);
+    root[0].1
+}
+
 #[test]
 fn compare_to_biodivine() {
     let files = load_bdd_files_up_to(MAX_INPUT_NODES);
@@ -141,15 +149,8 @@ fn compare_to_biodivine() {
             let expected_root = get_biodivine_root(&expected);
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
-            let expected_bdd: Bdd = expected.into();
-            let root = expected_bdd
-                .node_table
-                .iter()
-                .filter(|pair| pair.key().variable == expected_root.var.into())
-                .map(|pair| (*pair.key(), *pair.value()))
-                .collect::<Vec<(Node, NodeId)>>();
-            assert_eq!(root.len(), 1);
-            let expected_root = root[0].1;
+            let expected_bdd: Bdd = biodivine_bdd_into_bdd(expected);
+            let expected_root = get_root(&expected_bdd, expected_root.var.into());
             sanity_check(&expected_bdd, expected_root);
 
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
