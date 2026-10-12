@@ -1,4 +1,3 @@
-use crate::parallel::biodivine_conversions::biodivine_bdd_into_bdd;
 use crate::parallel::{Bdd, Node, NodeId, Variable};
 use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode as BiodivineNode};
 use std::fs::{self, File};
@@ -81,7 +80,7 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
 
     let root_biodivine = get_biodivine_root(&biodivine);
 
-    let bdd: Bdd = biodivine_bdd_into_bdd(biodivine);
+    let bdd: Bdd = biodivine.into();
     let root = get_root(&bdd, root_biodivine.var.into());
 
     (bdd, root)
@@ -146,7 +145,7 @@ fn compare_to_biodivine() {
             let expected_root = get_biodivine_root(&expected);
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
-            let expected_bdd: Bdd = biodivine_bdd_into_bdd(expected);
+            let expected_bdd: Bdd = expected.into();
             let expected_root = get_root(&expected_bdd, expected_root.var.into());
             sanity_check(&expected_bdd, expected_root);
 
