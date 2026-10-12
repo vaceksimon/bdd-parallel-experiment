@@ -1,7 +1,13 @@
-use crate::sequential::Bdd;
+use crate::sequential::{Bdd, NodeVisitor, VisitedNodes};
 use crate::sequential::{Node, NodeId, Variable};
 use std::cmp::min;
 use std::collections::HashMap;
+
+impl NodeVisitor for VisitedNodes {
+    fn visit(&mut self, a: NodeId, b: NodeId) {
+        self.insert((a, b));
+    }
+}
 
 impl Bdd {
     pub fn new() -> Self {
@@ -14,8 +20,17 @@ impl Bdd {
             task_cache: HashMap::new(),
         }
     }
-
     pub fn apply_recursive(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+        self.apply_recursive_with(a_id, b_id, &mut ())
+    }
+
+    fn apply_recursive_with<V: NodeVisitor>(
+        &mut self,
+        a_id: NodeId,
+        b_id: NodeId,
+        visitor: &mut V,
+    ) -> (NodeId, Node) {
+        visitor.visit(a_id, b_id);
         if a_id.is_terminal() && b_id.is_terminal() {
             return if a_id.is_one() && b_id.is_one() {
                 (
@@ -50,8 +65,8 @@ impl Bdd {
             (b_id, b_id)
         };
 
-        let l = self.apply_recursive(low_a, low_b);
-        let h = self.apply_recursive(high_a, high_b);
+        let l = self.apply_recursive_with(low_a, low_b, visitor);
+        let h = self.apply_recursive_with(high_a, high_b, visitor);
 
         let (c_node_id, c) = if l != h {
             self.ensure_node(v, l.0, h.0)
@@ -64,6 +79,15 @@ impl Bdd {
     }
 
     pub fn apply_iterative(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
+        self.apply_iterative_with(a_id, b_id, &mut ())
+    }
+
+    fn apply_iterative_with<V: NodeVisitor>(
+        &mut self,
+        a_id: NodeId,
+        b_id: NodeId,
+        visitor: &mut V,
+    ) -> (NodeId, Node) {
         // stack contains tasks that need to be done
         let mut stack: Vec<(NodeId, NodeId, Variable)> =
             vec![(a_id, b_id, Variable::UNDEFINED_VARIABLE)];
@@ -71,6 +95,7 @@ impl Bdd {
         let mut results: Vec<(NodeId, Node)> = vec![];
 
         while let Some((a_id, b_id, variable)) = stack.pop() {
+            visitor.visit(a_id, b_id);
             if a_id.is_terminal() && b_id.is_terminal() {
                 if a_id.is_one() && b_id.is_one() {
                     results.push((
@@ -450,5 +475,18 @@ mod tests {
         let (_, actual) = bdd_a.apply_recursive(a1_id, id_map[&b1_id]);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn visitor_test() {
+        let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
+        let mut visited_recursive: VisitedNodes = VisitedNodes::new();
+        bdd.apply_recursive_with(a_id, b_id, &mut visited_recursive);
+
+        let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
+        let mut visited_iter: VisitedNodes = VisitedNodes::new();
+        bdd.apply_iterative_with(a_id, b_id, &mut visited_iter);
+
+        assert_eq!(visited_recursive, visited_iter);
     }
 }

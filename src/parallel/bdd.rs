@@ -294,7 +294,6 @@ impl Bdd {
             return mapped;
         }
 
-        println!("Merging node {:?}", id);
         let node = other.nodes.get(&id).unwrap();
         let low = Self::merge_node(self, other, node.low_child, id_map);
         let high = Self::merge_node(self, other, node.high_child, id_map);
@@ -474,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn generating_tasks() {
+    fn generating_tasks_thesis_example() {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
         let mut bdd = Bdd::new();
