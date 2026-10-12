@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub mod bdd;
 
@@ -15,6 +15,12 @@ mod comparison_tests;
 pub struct NodeId(usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Variable(u32);
+
+pub(crate) type VisitedNodes = HashSet<(NodeId, NodeId)>;
+pub(crate) trait NodeVisitor {
+    fn visit(&mut self, _a: NodeId, _b: NodeId) {}
+}
+impl NodeVisitor for () {}
 
 #[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Node {
