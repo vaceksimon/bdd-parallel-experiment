@@ -1,68 +1,7 @@
 use crate::parallel::{Bdd, Node, NodeId, Variable};
-use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode, BddPointer, BddVariable};
+use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
 use std::collections::HashMap;
-
-/// Manages the mapping of BDD pointers to node IDs for conversion BiodivineBdd -> Bdd
-fn convert_node_id(node_id: BddPointer, id_map: &mut HashMap<BddPointer, NodeId>) -> NodeId {
-    if let Some(id) = id_map.get(&node_id) {
-        *id
-    } else {
-        let new_id = if node_id.is_terminal() {
-            if node_id.is_one() {
-                NodeId::TERMINAL_1
-            } else {
-                NodeId::TERMINAL_0
-            }
-        } else {
-            NodeId::new()
-        };
-
-        id_map.insert(node_id, new_id);
-        new_id
-    }
-}
-
-pub(super) fn biodivine_bdd_into_bdd(value: BiodivineBdd) -> Bdd {
-    let mut converted_node_ids: HashMap<BddPointer, NodeId> = HashMap::new();
-    let result = Bdd::new();
-
-    let mut stack: Vec<BddPointer> = Vec::with_capacity(value.size());
-    stack.push(value.root_pointer());
-    let biodivine_nodes = value.to_nodes();
-
-    while let Some(biodivine_node_id) = stack.pop() {
-        let biodivine_node = biodivine_nodes[biodivine_node_id.to_index()];
-
-        let biodivine_low_node_id = biodivine_node.low_link;
-        let biodivine_high_node_id = biodivine_node.high_link;
-        if !biodivine_high_node_id.is_terminal() {
-            stack.push(biodivine_high_node_id);
-        }
-        if !biodivine_low_node_id.is_terminal() {
-            stack.push(biodivine_low_node_id);
-        }
-
-        let converted_node_id = convert_node_id(biodivine_node_id, &mut converted_node_ids);
-        if result.nodes.get(&converted_node_id).is_none() {
-            let converted_variable = biodivine_node.var.into();
-            let converted_low_node_id =
-                convert_node_id(biodivine_low_node_id, &mut converted_node_ids);
-            let converted_high_node_id =
-                convert_node_id(biodivine_high_node_id, &mut converted_node_ids);
-
-            let converted_node = Node::new(
-                converted_variable,
-                converted_low_node_id,
-                converted_high_node_id,
-            );
-            result.nodes.insert(converted_node_id, converted_node);
-            result.node_table.insert(converted_node, converted_node_id);
-        } else {
-            continue;
-        }
-    }
-    result
-}
+use uuid::Uuid;
 
 impl Bdd {
     /// Manages the mapping of node IDs to BDD pointers for conversion Bdd -> BiodivineBdd
@@ -133,6 +72,36 @@ impl Bdd {
     }
 }
 
+impl From<biodivine_lib_bdd::Bdd> for Bdd {
+    fn from(value: biodivine_lib_bdd::Bdd) -> Self {
+        // The two BDD implementations are very similar, meaning the translation is mostly
+        // just moving data into the right structs:
+
+        let result = Bdd::new();
+        for biodivine_node in value.to_nodes() {
+            if biodivine_node.is_terminal() {
+                continue; // Skip terminal nodes (these are already created for us).
+            }
+            let node: Node = biodivine_node.into();
+            let node_id = result.nodes.len().into();
+            result.nodes.insert(node_id, node);
+            result.node_table.insert(node, node_id);
+        }
+
+        result
+    }
+}
+
+impl From<BddNode> for Node {
+    fn from(value: BddNode) -> Self {
+        Node::new(
+            value.var.into(),
+            value.low_link.into(),
+            value.high_link.into(),
+        )
+    }
+}
+
 impl From<BddVariable> for Variable {
     fn from(value: BddVariable) -> Self {
         Variable(
@@ -148,5 +117,17 @@ impl From<Variable> for BddVariable {
         BddVariable::from_index(
             usize::try_from(value.0).expect("Invariant violation: usize is smaller than 32 bits."),
         )
+    }
+}
+
+impl From<usize> for NodeId {
+    fn from(value: usize) -> Self {
+        NodeId(Uuid::from_u128(value as u128))
+    }
+}
+
+impl From<BddPointer> for NodeId {
+    fn from(value: BddPointer) -> Self {
+        value.to_index().into()
     }
 }

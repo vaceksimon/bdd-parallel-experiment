@@ -294,6 +294,7 @@ impl Bdd {
             return mapped;
         }
 
+        println!("Merging node {:?}", id);
         let node = other.nodes.get(&id).unwrap();
         let low = Self::merge_node(self, other, node.low_child, id_map);
         let high = Self::merge_node(self, other, node.high_child, id_map);
