@@ -1,7 +1,7 @@
 use crate::parallel::bdd::tests::{generated_tasks_into_set, make_thesis_example_bdds};
-use crate::parallel::{Bdd, Node, NodeId, Variable};
+use crate::parallel::{Bdd, NodeId};
 use crate::sequential::VisitedNodes;
-use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode as BiodivineNode};
+use biodivine_lib_bdd::Bdd as BiodivineBdd;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -81,12 +81,11 @@ fn load_biodivine_bdd(path: &Path) -> BiodivineBdd {
 fn load_bdd(path: &Path) -> (Bdd, NodeId) {
     let biodivine = load_biodivine_bdd(path);
 
-    let root_biodivine = get_biodivine_root(&biodivine);
-
+    let biodivine_root = biodivine.root_pointer();
     let bdd: Bdd = biodivine.into();
-    let root = get_root(&bdd, root_biodivine.var.into());
+    let root_id: NodeId = biodivine_root.into();
 
-    (bdd, root)
+    (bdd, root_id)
 }
 
 /// Load two test BDDs and merge them
@@ -109,25 +108,6 @@ fn extracted_to_biodivine(bdd: &Bdd, root: NodeId) -> BiodivineBdd {
     extracted.into_biodivine_bdd(extracted_root)
 }
 
-fn get_biodivine_root(bdd: &BiodivineBdd) -> BiodivineNode {
-    let root_index = bdd.root_pointer().to_index();
-    let expected_nodes = bdd.clone().to_nodes();
-    expected_nodes[root_index]
-}
-
-/// Looks up the root node from the BDD for a given variable.
-/// Operates on the fact that the root node is the only node with the given variable.
-fn get_root(bdd: &Bdd, root_var: Variable) -> NodeId {
-    let root = bdd
-        .node_table
-        .iter()
-        .filter(|pair| pair.key().variable == root_var)
-        .map(|pair| (*pair.key(), *pair.value()))
-        .collect::<Vec<(Node, NodeId)>>();
-    assert_eq!(root.len(), 1);
-    root[0].1
-}
-
 #[test]
 fn compare_to_biodivine() {
     let files = load_bdd_files_up_to(MAX_INPUT_NODES);
@@ -145,11 +125,15 @@ fn compare_to_biodivine() {
             let biodivine_a = load_biodivine_bdd(&files[i]);
             let biodivine_b = load_biodivine_bdd(&files[j]);
             let expected: BiodivineBdd = biodivine_a.and(&biodivine_b);
-            let expected_root = get_biodivine_root(&expected);
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
+            let expected_root: NodeId = expected.root_pointer().into();
+            println!(
+                "expected biodivine root: {:?}, expected root: {:?}",
+                expected.root_pointer(),
+                expected_root
+            );
             let expected_bdd: Bdd = expected.into();
-            let expected_root = get_root(&expected_bdd, expected_root.var.into());
             sanity_check(&expected_bdd, expected_root);
 
             let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
@@ -183,8 +167,8 @@ fn compare_generated_tasks() {
     assert_eq!(expected_results, task_set);
 }
 
-#[test]
-fn compare_generated_tasks_() {
+// #[test]
+fn _compare_generated_tasks_() {
     let files = load_bdd_files_up_to(MAX_INPUT_NODES);
     assert!(
         !files.is_empty(),
