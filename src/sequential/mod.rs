@@ -9,7 +9,7 @@ mod biodivine_conversions;
 pub mod common;
 /// These are larger "integration tests" that
 #[cfg(test)]
-mod comparison_tests;
+pub(crate) mod comparison_tests;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
 pub struct NodeId(pub(crate) usize);
@@ -29,6 +29,7 @@ pub struct Node {
     high_child: NodeId,
 }
 
+#[derive(Clone)]
 pub struct Bdd {
     nodes: Vec<Node>,
     // existing

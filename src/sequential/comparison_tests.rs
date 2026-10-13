@@ -1,10 +1,10 @@
-use crate::sequential::Bdd;
+use crate::sequential::{Bdd, NodeVisitor, VisitedNodes};
 use crate::sequential::{Node, NodeId};
 use biodivine_lib_bdd::Bdd as BiodivineBdd;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
-type ApplyFn = fn(&mut Bdd, NodeId, NodeId) -> (NodeId, Node);
+type ApplyFn<V> = fn(&mut Bdd, NodeId, NodeId, &mut V) -> (NodeId, Node);
 
 /// Only test BDDs with at most this many nodes (including terminals).
 const MAX_INPUT_NODES: usize = 100;
@@ -63,7 +63,7 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
 }
 
 /// Load two test BDDs, merge them, and run `apply` on their roots.
-fn merged_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
+pub(crate) fn merge_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
     let (bdd_a, a_root) = load_bdd(a_path);
     let (bdd_b, b_root) = load_bdd(b_path);
 
@@ -75,9 +75,14 @@ fn merged_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
 }
 
 /// Load two test BDDs, merge them, and run `apply` on their roots.
-fn merged_apply(a_path: &Path, b_path: &Path, apply: ApplyFn) -> (Bdd, NodeId, Node) {
-    let (mut bdd, a_root, b_root) = merged_load(a_path, b_path);
-    let (result_root, result_node) = apply(&mut bdd, a_root, b_root);
+fn merged_apply<V: NodeVisitor>(
+    a_path: &Path,
+    b_path: &Path,
+    visitor: &mut V,
+    apply: ApplyFn<V>,
+) -> (Bdd, NodeId, Node) {
+    let (mut bdd, a_root, b_root) = merge_load(a_path, b_path);
+    let (result_root, result_node) = apply(&mut bdd, a_root, b_root, visitor);
     (bdd, result_root, result_node)
 }
 
@@ -108,10 +113,28 @@ fn recursive_and_iterative_apply_agree_on_all_bdd_pairs() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
-            let (bdd_rec, root_rec, node_rec) =
-                merged_apply(&files[i], &files[j], Bdd::apply_recursive);
-            let (bdd_iter, root_iter, node_iter) =
-                merged_apply(&files[i], &files[j], Bdd::apply_iterative);
+            let mut visited_rec: VisitedNodes = VisitedNodes::new();
+            let (bdd_rec, root_rec, node_rec) = merged_apply(
+                &files[i],
+                &files[j],
+                &mut visited_rec,
+                Bdd::apply_recursive_with,
+            );
+            let mut visited_iter: VisitedNodes = VisitedNodes::new();
+            let (bdd_iter, root_iter, node_iter) = merged_apply(
+                &files[i],
+                &files[j],
+                &mut visited_iter,
+                Bdd::apply_iterative_with,
+            );
+
+            assert_eq!(
+                visited_rec,
+                visited_iter,
+                "visited nodes differ for {} and {}",
+                files[i].display(),
+                files[j].display()
+            );
 
             assert_eq!(
                 node_rec,
