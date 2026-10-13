@@ -82,7 +82,7 @@ impl Bdd {
         self.apply_iterative_with(a_id, b_id, &mut ())
     }
 
-    fn apply_iterative_with<V: NodeVisitor>(
+    pub(crate) fn apply_iterative_with<V: NodeVisitor>(
         &mut self,
         a_id: NodeId,
         b_id: NodeId,
@@ -245,7 +245,7 @@ impl Bdd {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     type ApplyFn = fn(&mut Bdd, NodeId, NodeId) -> (NodeId, Node);
@@ -288,7 +288,7 @@ mod tests {
         basic_apply_invariants(Bdd::apply_iterative);
     }
 
-    fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
+    pub(crate) fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
         let mut bdd = Bdd::new();
