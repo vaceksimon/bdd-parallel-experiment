@@ -40,7 +40,7 @@ impl Bdd {
         Bdd { nodes, node_table }
     }
 
-    fn generate_tasks(
+    pub(crate) fn generate_tasks(
         &mut self,
         a_id: NodeId,
         b_id: NodeId,
@@ -243,7 +243,7 @@ impl Bdd {
         self.process_tasks(tasks, total_workers)
     }
 
-    fn ensure_node(
+    pub(crate) fn ensure_node(
         &self,
         variable: Variable,
         low_child: NodeId,
@@ -384,7 +384,7 @@ impl Bdd {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::collections::HashSet;
 
@@ -417,19 +417,73 @@ mod tests {
         assert_eq!(res2, res);
     }
 
-    fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
+    fn insert_node_with(
+        bdd: &Bdd,
+        id: NodeId,
+        var: Variable,
+        low: NodeId,
+        high: NodeId,
+    ) -> (NodeId, Node) {
+        let node = Node::new(var, low, high);
+        bdd.nodes.insert(id, node);
+        bdd.node_table.insert(node, id);
+        (id, node)
+    }
+
+    pub(crate) fn generated_tasks_into_set(
+        generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
+    ) -> HashSet<(NodeId, NodeId)> {
+        generated_tasks
+            .iter()
+            .flat_map(|value| {
+                let queue = value.value();
+                let mut new_queue = Vec::new();
+                while !queue.is_empty() {
+                    let (a, b, _, _) = queue.pop().unwrap();
+                    new_queue.push((a, b));
+                }
+                new_queue.into_iter()
+            })
+            .collect()
+    }
+
+    pub(crate) fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
         let bdd = Bdd::new();
 
-        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
+        let (a4_id, _) = insert_node_with(
+            &bdd,
+            NodeId::from(2),
+            Variable(3),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+        );
+        let (a3_id, _) = insert_node_with(
+            &bdd,
+            NodeId::from(3),
+            Variable(2),
+            NodeId::TERMINAL_1,
+            a4_id,
+        );
+        let (a2_id, _) = insert_node_with(
+            &bdd,
+            NodeId::from(4),
+            Variable(2),
+            NodeId::TERMINAL_0,
+            a4_id,
+        );
+        let (a1_id, _) = insert_node_with(&bdd, NodeId::from(5), Variable(1), a2_id, a3_id);
 
-        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
+        let (b3_id, _) = insert_node_with(
+            &bdd,
+            NodeId::from(6),
+            Variable(3),
+            NodeId::TERMINAL_1,
+            NodeId::TERMINAL_0,
+        );
+        let b2_id = a4_id;
+        let (b1_id, _) = insert_node_with(&bdd, NodeId::from(7), Variable(2), b2_id, b3_id);
 
         (bdd, a1_id, b1_id)
     }
@@ -476,49 +530,25 @@ mod tests {
     fn generating_tasks_thesis_example() {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
-        let mut bdd = Bdd::new();
+        let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
 
-        let (a4_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (a3_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id);
-        let (a2_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id);
-        let (a1_id, _) = bdd.ensure_node(Variable(1), a2_id, a3_id);
-
-        let (b3_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0);
-        let (b2_id, _) = bdd.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-        let (b1_id, _) = bdd.ensure_node(Variable(2), b2_id, b3_id);
-
-        let task_set = bdd
-            .generate_tasks(a1_id, b1_id, 5)
-            .iter()
-            .flat_map(|value| {
-                let queue = value.value();
-                let mut new_queue = Vec::new();
-                while !queue.is_empty() {
-                    let (a, b, _, _) = queue.pop().unwrap();
-                    new_queue.push((a, b));
-                }
-                // print!("Tasks for Variable: {:?}:[ ", value.key());
-                // new_queue.iter().for_each(|item| print!("{:?}, ", item));
-                // println!("]");
-                new_queue.into_iter()
-            })
-            .collect();
+        let task_set = generated_tasks_into_set(bdd.generate_tasks(a_id, b_id, 5));
         let expected_results = HashSet::from([
             (NodeId::TERMINAL_0, NodeId::TERMINAL_0),
             (NodeId::TERMINAL_0, NodeId::TERMINAL_1),
-            (NodeId::TERMINAL_0, b2_id),
-            (NodeId::TERMINAL_0, b2_id),
+            (NodeId::TERMINAL_0, NodeId::from(2)),
+            (NodeId::TERMINAL_0, NodeId::from(2)),
             (NodeId::TERMINAL_1, NodeId::TERMINAL_0),
             (NodeId::TERMINAL_1, NodeId::TERMINAL_1),
-            (NodeId::TERMINAL_1, b2_id),
-            (NodeId::TERMINAL_1, b2_id),
-            (b2_id, b3_id),
-            (b2_id, b3_id),
-            (a3_id, b1_id),
-            (a3_id, b1_id),
-            (a2_id, b1_id),
-            (a2_id, b1_id),
-            (a1_id, b1_id),
+            (NodeId::TERMINAL_1, NodeId::from(2)),
+            (NodeId::TERMINAL_1, NodeId::from(2)),
+            (NodeId::from(2), NodeId::from(6)),
+            (NodeId::from(2), NodeId::from(6)),
+            (NodeId::from(3), NodeId::from(7)),
+            (NodeId::from(3), NodeId::from(7)),
+            (NodeId::from(4), NodeId::from(7)),
+            (NodeId::from(4), NodeId::from(7)),
+            (NodeId::from(5), NodeId::from(7)),
         ]);
         assert_eq!(expected_results, task_set);
     }

@@ -12,7 +12,7 @@ pub mod common;
 mod comparison_tests;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
-pub struct NodeId(usize);
+pub struct NodeId(pub(crate) usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Variable(u32);
 

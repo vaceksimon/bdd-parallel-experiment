@@ -1,5 +1,8 @@
+use crate::parallel::bdd::tests::{generated_tasks_into_set, make_thesis_example_bdds};
 use crate::parallel::{Bdd, Node, NodeId, Variable};
+use crate::sequential::VisitedNodes;
 use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddNode as BiodivineNode};
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -86,8 +89,8 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
     (bdd, root)
 }
 
-/// Load two test BDDs, merge them, and run `apply` on their roots.
-fn merged_apply(a_path: &Path, b_path: &Path) -> (Bdd, NodeId) {
+/// Load two test BDDs and merge them
+fn merge_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
     let (bdd_a, a_root) = load_bdd(a_path);
     let (bdd_b, b_root) = load_bdd(b_path);
 
@@ -97,8 +100,7 @@ fn merged_apply(a_path: &Path, b_path: &Path) -> (Bdd, NodeId) {
 
     sanity_check(&merged, a_root);
     sanity_check(&merged, b_root_merged);
-    let (result_root, _) = merged.apply(a_root, b_root_merged);
-    (merged, result_root)
+    (merged, a_root, b_root_merged)
 }
 
 /// Extract the subgraph at `root` and convert it to `biodivine-lib-bdd`.
@@ -136,7 +138,8 @@ fn compare_to_biodivine() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
-            let (bdd_actual, root_actual) = merged_apply(&files[i], &files[j]);
+            let (mut bdd_actual, a_root, b_root) = merge_load(&files[i], &files[j]);
+            let (root_actual, _) = bdd_actual.apply(a_root, b_root);
             sanity_check(&bdd_actual, root_actual);
 
             let biodivine_a = load_biodivine_bdd(&files[i]);
@@ -158,6 +161,40 @@ fn compare_to_biodivine() {
                 files[i].display(),
                 files[j].display()
             );
+        }
+    }
+}
+
+#[test]
+fn compare_generated_tasks() {
+    let (mut bdd, a_id, b_id) = crate::sequential::bdd::tests::make_thesis_example_bdds();
+    let mut visited_iter: VisitedNodes = VisitedNodes::new();
+    bdd.apply_iterative_with(a_id, b_id, &mut visited_iter);
+    let expected_results: HashSet<(NodeId, NodeId)> = visited_iter
+        .into_iter()
+        .map(|(a, b)| (a.0.into(), b.0.into()))
+        .collect();
+
+    let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
+
+    let task_set: HashSet<(NodeId, NodeId)> =
+        generated_tasks_into_set(bdd.generate_tasks(a_id, b_id, 5));
+
+    assert_eq!(expected_results, task_set);
+}
+
+#[test]
+fn compare_generated_tasks_() {
+    let files = load_bdd_files_up_to(MAX_INPUT_NODES);
+    assert!(
+        !files.is_empty(),
+        "expected at least one .bdd file in test-data with at most {MAX_INPUT_NODES} nodes"
+    );
+
+    for i in 0..files.len() {
+        for j in i..files.len() {
+            let (_bdd_actual, _a_root, _b_root) = merge_load(&files[i], &files[j]);
+            // TODO compare generated tasks of parallel, iterative and recursive
         }
     }
 }
