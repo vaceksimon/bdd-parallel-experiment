@@ -24,7 +24,7 @@ impl Bdd {
         self.apply_recursive_with(a_id, b_id, &mut ())
     }
 
-    fn apply_recursive_with<V: NodeVisitor>(
+    pub(crate) fn apply_recursive_with<V: NodeVisitor>(
         &mut self,
         a_id: NodeId,
         b_id: NodeId,

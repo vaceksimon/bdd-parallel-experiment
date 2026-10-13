@@ -1,4 +1,4 @@
-use crate::parallel::bdd::tests::{generated_tasks_into_set, make_thesis_example_bdds};
+use crate::parallel::bdd::tests::generated_tasks_into_set;
 use crate::parallel::{Bdd, NodeId};
 use crate::sequential::VisitedNodes;
 use biodivine_lib_bdd::Bdd as BiodivineBdd;
@@ -151,24 +151,6 @@ fn compare_to_biodivine() {
 
 #[test]
 fn compare_generated_tasks() {
-    let (mut bdd, a_id, b_id) = crate::sequential::bdd::tests::make_thesis_example_bdds();
-    let mut visited_iter: VisitedNodes = VisitedNodes::new();
-    bdd.apply_iterative_with(a_id, b_id, &mut visited_iter);
-    let expected_results: HashSet<(NodeId, NodeId)> = visited_iter
-        .into_iter()
-        .map(|(a, b)| (a.0.into(), b.0.into()))
-        .collect();
-
-    let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
-
-    let task_set: HashSet<(NodeId, NodeId)> =
-        generated_tasks_into_set(bdd.generate_tasks(a_id, b_id, 5));
-
-    assert_eq!(expected_results, task_set);
-}
-
-// #[test]
-fn _compare_generated_tasks_() {
     let files = load_bdd_files_up_to(MAX_INPUT_NODES);
     assert!(
         !files.is_empty(),
@@ -177,8 +159,32 @@ fn _compare_generated_tasks_() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
-            let (_bdd_actual, _a_root, _b_root) = merge_load(&files[i], &files[j]);
-            // TODO compare generated tasks of parallel, iterative and recursive
+            let (mut bdd_parallel, a_root_parallel, b_root_parallel) =
+                merge_load(&files[i], &files[j]);
+            let task_set: HashSet<(NodeId, NodeId)> = generated_tasks_into_set(
+                bdd_parallel.generate_tasks(a_root_parallel, b_root_parallel, 5),
+            );
+
+            let (mut bdd_sequential, a_root_sequential, b_root_sequential) =
+                crate::sequential::comparison_tests::merge_load(&files[i], &files[j]);
+            let mut visited_iter: VisitedNodes = VisitedNodes::new();
+            bdd_sequential.apply_iterative_with(
+                a_root_sequential,
+                b_root_sequential,
+                &mut visited_iter,
+            );
+            let expected_results: HashSet<(NodeId, NodeId)> = visited_iter
+                .into_iter()
+                .map(|(a, b)| (a.0.into(), b.0.into()))
+                .collect();
+
+            assert_eq!(
+                expected_results,
+                task_set,
+                "Concurrent and sequential implementation does not agree on generated tasks.\n# of concurrent tasks: {}\n# of sequential tasks: {}",
+                task_set.len(),
+                expected_results.len(),
+            );
         }
     }
 }
