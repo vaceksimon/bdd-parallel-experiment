@@ -63,7 +63,7 @@ fn load_bdd(path: &Path) -> (Bdd, NodeId) {
 }
 
 /// Load two test BDDs, merge them, and run `apply` on their roots.
-fn merged_apply(a_path: &Path, b_path: &Path, apply: ApplyFn) -> (Bdd, NodeId, Node) {
+fn merged_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
     let (bdd_a, a_root) = load_bdd(a_path);
     let (bdd_b, b_root) = load_bdd(b_path);
 
@@ -71,8 +71,14 @@ fn merged_apply(a_path: &Path, b_path: &Path, apply: ApplyFn) -> (Bdd, NodeId, N
     let id_map = merged.merge(&bdd_b);
     let b_root_merged = id_map[&b_root];
 
-    let (result_root, result_node) = apply(&mut merged, a_root, b_root_merged);
-    (merged, result_root, result_node)
+    (merged, a_root, b_root_merged)
+}
+
+/// Load two test BDDs, merge them, and run `apply` on their roots.
+fn merged_apply(a_path: &Path, b_path: &Path, apply: ApplyFn) -> (Bdd, NodeId, Node) {
+    let (mut bdd, a_root, b_root) = merged_load(a_path, b_path);
+    let (result_root, result_node) = apply(&mut bdd, a_root, b_root);
+    (bdd, result_root, result_node)
 }
 
 /// Extract the subgraph at `root` and convert it to `biodivine-lib-bdd`.
