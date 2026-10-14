@@ -102,12 +102,15 @@ impl Bdd {
                             let high_task_id = TaskId::new();
                             let successor_results_id =
                                 SuccessorResults::new(low_task_id, high_task_id);
-                            if let Some(queue) = generated_tasks.read().unwrap().get(&v) {
-                                queue.push((a_id, b_id, task_id, successor_results_id));
-                            } else {
-                                let task_queue: SegQueue<GeneratedTask> = SegQueue::new();
+                            if let Some(task_queue) = generated_tasks.read().unwrap().get(&v) {
                                 task_queue.push((a_id, b_id, task_id, successor_results_id));
-                                generated_tasks.write().unwrap().insert(v, task_queue);
+                            } else {
+                                generated_tasks.read().unwrap().entry(v).or_default().push((
+                                    a_id,
+                                    b_id,
+                                    task_id,
+                                    successor_results_id,
+                                ));
                             }
 
                             pool.queue.push((low_a, low_b, low_task_id));
@@ -386,7 +389,6 @@ impl Bdd {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use std::collections::HashSet;
 
     #[test]
     fn basic_apply_invariants() {
@@ -432,7 +434,7 @@ pub(crate) mod tests {
 
     pub(crate) fn generated_tasks_into_set(
         generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
-    ) -> HashSet<(NodeId, NodeId)> {
+    ) -> BTreeSet<(NodeId, NodeId)> {
         generated_tasks
             .iter()
             .flat_map(|value| {
@@ -533,7 +535,7 @@ pub(crate) mod tests {
         let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
 
         let task_set = generated_tasks_into_set(bdd.generate_tasks(a_id, b_id, 5));
-        let expected_results = HashSet::from([
+        let expected_results = BTreeSet::from([
             (NodeId::TERMINAL_0, NodeId::TERMINAL_0),
             (NodeId::TERMINAL_0, NodeId::TERMINAL_1),
             (NodeId::TERMINAL_0, NodeId::from(2)),
