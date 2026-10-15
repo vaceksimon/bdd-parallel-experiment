@@ -449,7 +449,7 @@ pub(crate) mod tests {
             .collect()
     }
 
-    pub(crate) fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
+    fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
         // Two BDDs taken from Lukas Urban's Thesis
         // https://is.muni.cz/th/danz1/Thesis.pdf#page=20
         let bdd = Bdd::new();

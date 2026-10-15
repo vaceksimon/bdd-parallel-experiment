@@ -1,9 +1,9 @@
-use crate::sequential::{Bdd, NodeVisitor, VisitedNodes};
+use crate::sequential::{Bdd, TaskTracker, TaskVisitor};
 use crate::sequential::{Node, NodeId, Variable};
 use std::cmp::min;
 use std::collections::HashMap;
 
-impl NodeVisitor for VisitedNodes {
+impl TaskVisitor for TaskTracker {
     fn visit(&mut self, a: NodeId, b: NodeId) {
         self.insert((a, b));
     }
@@ -24,7 +24,7 @@ impl Bdd {
         self.apply_recursive_with(a_id, b_id, &mut ())
     }
 
-    pub(crate) fn apply_recursive_with<V: NodeVisitor>(
+    pub fn apply_recursive_with<V: TaskVisitor>(
         &mut self,
         a_id: NodeId,
         b_id: NodeId,
@@ -82,7 +82,7 @@ impl Bdd {
         self.apply_iterative_with(a_id, b_id, &mut ())
     }
 
-    pub(crate) fn apply_iterative_with<V: NodeVisitor>(
+    pub fn apply_iterative_with<V: TaskVisitor>(
         &mut self,
         a_id: NodeId,
         b_id: NodeId,
@@ -480,11 +480,11 @@ pub(crate) mod tests {
     #[test]
     fn visitor_test() {
         let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
-        let mut visited_recursive: VisitedNodes = VisitedNodes::new();
+        let mut visited_recursive: TaskTracker = TaskTracker::new();
         bdd.apply_recursive_with(a_id, b_id, &mut visited_recursive);
 
         let (mut bdd, a_id, b_id) = make_thesis_example_bdds();
-        let mut visited_iter: VisitedNodes = VisitedNodes::new();
+        let mut visited_iter: TaskTracker = TaskTracker::new();
         bdd.apply_iterative_with(a_id, b_id, &mut visited_iter);
 
         assert_eq!(visited_recursive, visited_iter);

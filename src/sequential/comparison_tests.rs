@@ -1,4 +1,4 @@
-use crate::sequential::{Bdd, NodeVisitor, VisitedNodes};
+use crate::sequential::{Bdd, TaskTracker, TaskVisitor};
 use crate::sequential::{Node, NodeId};
 use crate::test_utils::load_util::{load_bdd_files_up_to, load_biodivine_bdd};
 use biodivine_lib_bdd::Bdd as BiodivineBdd;
@@ -11,8 +11,8 @@ const MAX_INPUT_NODES: usize = 100;
 
 /// Load a test file and convert it to our `Bdd`, returning the root node id.
 fn load_bdd(path: &Path) -> (Bdd, NodeId) {
-    let biodivine = load_biodivine_bdd(path);
-    let root = NodeId(biodivine.size() - 1);
+    let biodivine: BiodivineBdd = load_biodivine_bdd(path);
+    let root: NodeId = NodeId(biodivine.size() - 1);
     (biodivine.into(), root)
 }
 
@@ -29,7 +29,7 @@ pub(crate) fn merge_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) 
 }
 
 /// Load two test BDDs, merge them, and run `apply` on their roots.
-fn merged_apply<V: NodeVisitor>(
+fn merged_apply<V: TaskVisitor>(
     a_path: &Path,
     b_path: &Path,
     visitor: &mut V,
@@ -67,14 +67,14 @@ fn recursive_and_iterative_apply_agree_on_all_bdd_pairs() {
 
     for i in 0..files.len() {
         for j in i..files.len() {
-            let mut visited_rec: VisitedNodes = VisitedNodes::new();
+            let mut visited_rec: TaskTracker = TaskTracker::new();
             let (bdd_rec, root_rec, node_rec) = merged_apply(
                 &files[i],
                 &files[j],
                 &mut visited_rec,
                 Bdd::apply_recursive_with,
             );
-            let mut visited_iter: VisitedNodes = VisitedNodes::new();
+            let mut visited_iter: TaskTracker = TaskTracker::new();
             let (bdd_iter, root_iter, node_iter) = merged_apply(
                 &files[i],
                 &files[j],
@@ -99,14 +99,15 @@ fn recursive_and_iterative_apply_agree_on_all_bdd_pairs() {
             );
             assert_same_subgraph(&bdd_rec, root_rec, &bdd_iter, root_iter);
 
-            let biodivine_a = load_biodivine_bdd(&files[i]);
-            let biodivine_b = load_biodivine_bdd(&files[j]);
-            let expected = biodivine_a.and(&biodivine_b);
-            let actual = extracted_to_biodivine(&bdd_rec, root_rec);
+            let biodivine_a: BiodivineBdd = load_biodivine_bdd(&files[i]);
+            let biodivine_b: BiodivineBdd = load_biodivine_bdd(&files[j]);
+            let expected: BiodivineBdd = biodivine_a.and(&biodivine_b);
+            let actual: BiodivineBdd = extracted_to_biodivine(&bdd_rec, root_rec);
 
             let expected_bdd: Bdd = expected.into();
-            let expected_root = NodeId(expected_bdd.nodes.len() - 1);
-            let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
+            let expected_root: NodeId = NodeId(expected_bdd.nodes.len() - 1);
+            let expected_canonical: BiodivineBdd =
+                extracted_to_biodivine(&expected_bdd, expected_root);
 
             assert_eq!(
                 actual,
