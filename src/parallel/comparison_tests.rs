@@ -1,8 +1,9 @@
 use crate::parallel::bdd::tests::generated_tasks_into_set;
 use crate::parallel::{Bdd, NodeId};
-use crate::sequential::VisitedNodes;
+use crate::sequential::TaskTracker;
+use crate::sequential::comparison_tests::merge_load as merge_load_sequential;
 use crate::test_utils::load_util::{load_bdd_files_up_to, load_biodivine_bdd};
-use biodivine_lib_bdd::Bdd as BiodivineBdd;
+use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddPointer as BiodivineNodeId};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -33,9 +34,9 @@ fn sanity_check(bdd: &Bdd, root: NodeId) {
 
 /// Load a test file and convert it to our `Bdd`, returning the root node id.
 fn load_bdd(path: &Path) -> (Bdd, NodeId) {
-    let biodivine = load_biodivine_bdd(path);
+    let biodivine: BiodivineBdd = load_biodivine_bdd(path);
 
-    let biodivine_root = biodivine.root_pointer();
+    let biodivine_root: BiodivineNodeId = biodivine.root_pointer();
     let bdd: Bdd = biodivine.into();
     let root_id: NodeId = biodivine_root.into();
 
@@ -76,8 +77,8 @@ fn compare_to_biodivine() {
             let (root_actual, _) = bdd_actual.apply(a_root, b_root);
             sanity_check(&bdd_actual, root_actual);
 
-            let biodivine_a = load_biodivine_bdd(&files[i]);
-            let biodivine_b = load_biodivine_bdd(&files[j]);
+            let biodivine_a: BiodivineBdd = load_biodivine_bdd(&files[i]);
+            let biodivine_b: BiodivineBdd = load_biodivine_bdd(&files[j]);
             let expected: BiodivineBdd = biodivine_a.and(&biodivine_b);
             let actual: BiodivineBdd = extracted_to_biodivine(&bdd_actual, root_actual);
 
@@ -85,7 +86,8 @@ fn compare_to_biodivine() {
             let expected_bdd: Bdd = expected.into();
             sanity_check(&expected_bdd, expected_root);
 
-            let expected_canonical = extracted_to_biodivine(&expected_bdd, expected_root);
+            let expected_canonical: BiodivineBdd =
+                extracted_to_biodivine(&expected_bdd, expected_root);
 
             assert_eq!(
                 actual,
@@ -115,8 +117,8 @@ fn compare_generated_tasks() {
             );
 
             let (mut bdd_sequential, a_root_sequential, b_root_sequential) =
-                crate::sequential::comparison_tests::merge_load(&files[i], &files[j]);
-            let mut visited_iter: VisitedNodes = VisitedNodes::new();
+                merge_load_sequential(&files[i], &files[j]);
+            let mut visited_iter: TaskTracker = TaskTracker::new();
             bdd_sequential.apply_iterative_with(
                 a_root_sequential,
                 b_root_sequential,

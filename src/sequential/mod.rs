@@ -16,11 +16,13 @@ pub struct NodeId(pub(crate) usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Variable(u32);
 
-pub(crate) type VisitedNodes = HashSet<(NodeId, NodeId)>;
-pub(crate) trait NodeVisitor {
+pub trait TaskVisitor {
     fn visit(&mut self, _a: NodeId, _b: NodeId) {}
 }
-impl NodeVisitor for () {}
+
+impl TaskVisitor for () {}
+
+pub(crate) type TaskTracker = HashSet<(NodeId, NodeId)>;
 
 #[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Node {
@@ -29,7 +31,6 @@ pub struct Node {
     high_child: NodeId,
 }
 
-#[derive(Clone)]
 pub struct Bdd {
     nodes: Vec<Node>,
     // existing

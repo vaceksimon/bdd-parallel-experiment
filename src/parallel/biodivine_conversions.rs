@@ -1,5 +1,8 @@
 use crate::parallel::{Bdd, Node, NodeId, Variable};
-use biodivine_lib_bdd::{BddNode, BddPointer, BddVariable};
+use biodivine_lib_bdd::{
+    Bdd as BiodivineBdd, BddNode as BiodivineNode, BddPointer as BiodivineNodeId,
+    BddVariable as BiodivineVariable,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -7,20 +10,20 @@ impl Bdd {
     /// Manages the mapping of node IDs to BDD pointers for conversion Bdd -> BiodivineBdd
     fn convert_node_id(
         node_id: NodeId,
-        id_map: &mut HashMap<NodeId, BddPointer>,
+        id_map: &mut HashMap<NodeId, BiodivineNodeId>,
         current_id: &mut usize,
-    ) -> BddPointer {
-        if let Some(id) = id_map.get(&node_id) {
-            *id
+    ) -> BiodivineNodeId {
+        if let Some(biodivine_node_id) = id_map.get(&node_id) {
+            *biodivine_node_id
         } else {
-            let new_id = if node_id.is_terminal() {
+            let new_id: BiodivineNodeId = if node_id.is_terminal() {
                 if node_id.is_one() {
-                    BddPointer::one()
+                    BiodivineNodeId::one()
                 } else {
-                    BddPointer::zero()
+                    BiodivineNodeId::zero()
                 }
             } else {
-                let new_id = BddPointer::from_index(*current_id);
+                let new_id: BiodivineNodeId = BiodivineNodeId::from_index(*current_id);
                 *current_id += 1;
                 new_id
             };
@@ -30,16 +33,20 @@ impl Bdd {
         }
     }
 
-    pub(super) fn into_biodivine_bdd(self, root: NodeId) -> biodivine_lib_bdd::Bdd {
-        let mut id_map: HashMap<NodeId, BddPointer> = HashMap::new();
-        let mut nodes: Vec<BddNode> = vec![BddNode::mk_zero(u16::MAX), BddNode::mk_one(u16::MAX)];
+    pub(super) fn into_biodivine_bdd(self, root: NodeId) -> BiodivineBdd {
+        let mut id_map: HashMap<NodeId, BiodivineNodeId> = HashMap::new();
+        let mut nodes: Vec<BiodivineNode> = vec![
+            BiodivineNode::mk_zero(u16::MAX),
+            BiodivineNode::mk_one(u16::MAX),
+        ];
         let mut current_id: usize = 2;
 
         let mut stack: Vec<NodeId> = Vec::with_capacity(self.nodes.len());
         stack.push(root);
 
         while let Some(node_id) = stack.pop() {
-            let converted_node_id = Self::convert_node_id(node_id, &mut id_map, &mut current_id);
+            let converted_node_id: BiodivineNodeId =
+                Self::convert_node_id(node_id, &mut id_map, &mut current_id);
 
             if converted_node_id.to_index() > current_id {
                 let node = *self.nodes.get(&node_id).unwrap().value();
@@ -49,14 +56,14 @@ impl Bdd {
                 stack.push(high_node_id);
                 stack.push(low_node_id);
 
-                let converted_variable = node.variable.into();
-                let converted_low_node_id =
+                let converted_variable: BiodivineVariable = node.variable.into();
+                let converted_low_node_id: BiodivineNodeId =
                     Self::convert_node_id(node.low_child, &mut id_map, &mut current_id);
-                let converted_high_node_id =
+                let converted_high_node_id: BiodivineNodeId =
                     Self::convert_node_id(node.high_child, &mut id_map, &mut current_id);
                 nodes.insert(
                     converted_node_id.to_index(),
-                    BddNode::mk_node(
+                    BiodivineNode::mk_node(
                         converted_variable,
                         converted_low_node_id,
                         converted_high_node_id,
@@ -67,13 +74,13 @@ impl Bdd {
             }
         }
 
-        biodivine_lib_bdd::Bdd::from_nodes(&nodes)
+        BiodivineBdd::from_nodes(&nodes)
             .unwrap_or_else(|message| panic!("Correctness violation: {message}"))
     }
 }
 
-impl From<biodivine_lib_bdd::Bdd> for Bdd {
-    fn from(value: biodivine_lib_bdd::Bdd) -> Self {
+impl From<BiodivineBdd> for Bdd {
+    fn from(value: BiodivineBdd) -> Self {
         // The two BDD implementations are very similar, meaning the translation is mostly
         // just moving data into the right structs:
 
@@ -83,7 +90,7 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
                 continue; // Skip terminal nodes (these are already created for us).
             }
             let node: Node = biodivine_node.into();
-            let node_id = result.nodes.len().into();
+            let node_id: NodeId = result.nodes.len().into();
             result.nodes.insert(node_id, node);
             result.node_table.insert(node, node_id);
         }
@@ -92,8 +99,8 @@ impl From<biodivine_lib_bdd::Bdd> for Bdd {
     }
 }
 
-impl From<BddNode> for Node {
-    fn from(value: BddNode) -> Self {
+impl From<BiodivineNode> for Node {
+    fn from(value: BiodivineNode) -> Self {
         Node::new(
             value.var.into(),
             value.low_link.into(),
@@ -102,8 +109,8 @@ impl From<BddNode> for Node {
     }
 }
 
-impl From<BddVariable> for Variable {
-    fn from(value: BddVariable) -> Self {
+impl From<BiodivineVariable> for Variable {
+    fn from(value: BiodivineVariable) -> Self {
         Variable(
             u32::try_from(value.to_index())
                 .expect("Correctness violation: Biodivine variables are 16-bit."),
@@ -111,10 +118,10 @@ impl From<BddVariable> for Variable {
     }
 }
 
-impl From<Variable> for BddVariable {
+impl From<Variable> for BiodivineVariable {
     fn from(value: Variable) -> Self {
         // Technically this conversion can fail, but we don't expect that to happen in tests.
-        BddVariable::from_index(
+        BiodivineVariable::from_index(
             usize::try_from(value.0).expect("Invariant violation: usize is smaller than 32 bits."),
         )
     }
@@ -126,8 +133,8 @@ impl From<usize> for NodeId {
     }
 }
 
-impl From<BddPointer> for NodeId {
-    fn from(value: BddPointer) -> Self {
+impl From<BiodivineNodeId> for NodeId {
+    fn from(value: BiodivineNodeId) -> Self {
         value.to_index().into()
     }
 }
