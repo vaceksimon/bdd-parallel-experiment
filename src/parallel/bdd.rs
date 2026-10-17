@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -54,12 +54,8 @@ impl Bdd {
             cvar: Condvar::new(),
         });
         pool.queue.push((a_id, b_id, TaskId::new()));
-        let generated_tasks: RwLock<DashMap<Variable, SegQueue<GeneratedTask>>> =
-            RwLock::new(DashMap::new());
-        generated_tasks
-            .write()
-            .unwrap()
-            .insert(Variable::TERMINAL_VARIABLE, SegQueue::new());
+        let generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>> = DashMap::new();
+        generated_tasks.insert(Variable::TERMINAL_VARIABLE, SegQueue::new());
 
         thread::scope(|s| {
             for _ in 0..total_workers {
@@ -74,8 +70,6 @@ impl Bdd {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 // TODO terminals could be processed here already
                                 generated_tasks
-                                    .read()
-                                    .unwrap()
                                     .get(&Variable::TERMINAL_VARIABLE)
                                     .expect("A Queue for terminals should be present")
                                     .push((a_id, b_id, task_id, SuccessorResults::TERMINAL));
@@ -102,10 +96,10 @@ impl Bdd {
                             let high_task_id = TaskId::new();
                             let successor_results_id =
                                 SuccessorResults::new(low_task_id, high_task_id);
-                            if let Some(task_queue) = generated_tasks.read().unwrap().get(&v) {
+                            if let Some(task_queue) = generated_tasks.get(&v) {
                                 task_queue.push((a_id, b_id, task_id, successor_results_id));
                             } else {
-                                generated_tasks.read().unwrap().entry(v).or_default().push((
+                                generated_tasks.entry(v).or_default().push((
                                     a_id,
                                     b_id,
                                     task_id,
@@ -153,7 +147,7 @@ impl Bdd {
             }
         });
 
-        generated_tasks.into_inner().unwrap()
+        generated_tasks
     }
 
     fn process_tasks(
