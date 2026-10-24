@@ -2,19 +2,15 @@ use std::collections::{HashMap, HashSet};
 
 pub mod bdd;
 
-/// Implements conversion utilities for `biodivine_lib_bdd`. These enable comparison testing,
-/// but don't ship as part of the official API.
-#[cfg(test)]
-mod biodivine_conversions;
 pub mod common;
 /// These are larger "integration tests" that
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) mod comparison_tests;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
 pub struct NodeId(pub(crate) usize);
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Variable(u32);
+pub struct Variable(pub(crate) u32);
 
 pub trait TaskVisitor {
     fn visit(&mut self, _a: NodeId, _b: NodeId) {}
@@ -26,15 +22,15 @@ pub(crate) type TaskTracker = HashSet<(NodeId, NodeId)>;
 
 #[derive(Copy, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Node {
-    variable: Variable,
-    low_child: NodeId,
-    high_child: NodeId,
+    pub(crate) variable: Variable,
+    pub(crate) low_child: NodeId,
+    pub(crate) high_child: NodeId,
 }
 
 pub struct Bdd {
-    nodes: Vec<Node>,
+    pub(crate) nodes: Vec<Node>,
     // existing
-    node_table: HashMap<Node, NodeId>,
+    pub(crate) node_table: HashMap<Node, NodeId>,
     // finished
-    task_cache: HashMap<(NodeId, NodeId), NodeId>,
+    pub(crate) task_cache: HashMap<(NodeId, NodeId), NodeId>,
 }

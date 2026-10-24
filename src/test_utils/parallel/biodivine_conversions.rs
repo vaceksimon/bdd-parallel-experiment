@@ -33,7 +33,7 @@ impl Bdd {
         }
     }
 
-    pub(super) fn into_biodivine_bdd(self, root: NodeId) -> BiodivineBdd {
+    pub(crate) fn into_biodivine_bdd(self, root: NodeId) -> BiodivineBdd {
         let mut id_map: HashMap<NodeId, BiodivineNodeId> = HashMap::new();
         let mut nodes: Vec<BiodivineNode> = vec![
             BiodivineNode::mk_zero(u16::MAX),
