@@ -7,6 +7,14 @@ edition = "2024"
 crossbeam-queue = "0.3.14"
 dashmap = "6.2.1"
 uuid = { version = "1.29", features = ["v7"] }
+biodivine-lib-bdd = { version = "0.6.3", optional = true }
+
+[features]
+test-utils = ["dep:biodivine-lib-bdd"]
 
 [dev-dependencies]
-biodivine-lib-bdd = "0.6.3"
+criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bench]]
+name = "dummy_benchmark"
+harness = false

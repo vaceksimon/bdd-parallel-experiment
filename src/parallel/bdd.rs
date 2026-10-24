@@ -383,6 +383,7 @@ impl Bdd {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::test_utils::parallel::helpers::generated_tasks_into_set;
 
     #[test]
     fn basic_apply_invariants() {
@@ -424,23 +425,6 @@ pub(crate) mod tests {
         bdd.nodes.insert(id, node);
         bdd.node_table.insert(node, id);
         (id, node)
-    }
-
-    pub(crate) fn generated_tasks_into_set(
-        generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
-    ) -> BTreeSet<(NodeId, NodeId)> {
-        generated_tasks
-            .iter()
-            .flat_map(|value| {
-                let queue = value.value();
-                let mut new_queue = Vec::new();
-                while !queue.is_empty() {
-                    let (a, b, _, _) = queue.pop().unwrap();
-                    new_queue.push((a, b));
-                }
-                new_queue.into_iter()
-            })
-            .collect()
     }
 
     fn make_thesis_example_bdds() -> (Bdd, NodeId, NodeId) {
