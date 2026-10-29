@@ -11,6 +11,11 @@ fn test_data_dir() -> PathBuf {
 pub fn parse_file_path(size: u32) -> PathBuf {
     test_data_dir().join(format!("{size}.binary.bdd"))
 }
+
+pub fn parse_big_file_path(size: u32) -> PathBuf {
+    test_data_dir().join(format!("big-data/bdd-10M/{size}.binary.bdd"))
+}
+
 /// Return test files whose encoded size is at most `max_nodes`.
 pub(crate) fn load_bdd_files_up_to(max_nodes: usize) -> Vec<PathBuf> {
     load_bdd_files()
