@@ -1,24 +1,23 @@
-use crate::parallel::{Bdd, GeneratedTask, NodeId, Variable};
+use crate::parallel::{Bdd, NodeId, SuccessorResults, TaskId, Variable};
 use crate::test_utils::load_util::load_biodivine_bdd;
 use biodivine_lib_bdd::{Bdd as BiodivineBdd, BddPointer as BiodivineNodeId};
-use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::collections::BTreeSet;
 use std::path::Path;
 
 pub(crate) fn generated_tasks_into_set(
-    generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
+    generated_tasks: DashMap<Variable, DashMap<TaskId, SuccessorResults>>,
 ) -> BTreeSet<(NodeId, NodeId)> {
     generated_tasks
         .iter()
         .flat_map(|value| {
-            let queue = value.value();
-            let mut new_queue = Vec::new();
-            while !queue.is_empty() {
-                let (a, b, _, _) = queue.pop().unwrap();
-                new_queue.push((a, b));
-            }
-            new_queue.into_iter()
+            let map = value.value();
+            let mut node_ids = Vec::new();
+            map.iter().for_each(|item| {
+                let task = (item.key().0, item.key().1);
+                node_ids.push(task);
+            });
+            node_ids.into_iter()
         })
         .collect()
 }

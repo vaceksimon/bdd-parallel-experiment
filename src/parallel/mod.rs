@@ -5,6 +5,7 @@ pub mod bdd;
 pub mod common;
 #[cfg(any(test, feature = "test-utils"))]
 mod comparison_tests;
+pub mod xddd;
 
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Debug)]
 pub struct NodeId(pub(crate) Uuid);
@@ -19,15 +20,14 @@ pub struct Node {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TaskId(Uuid);
-pub type Task = (NodeId, NodeId, TaskId);
-pub type GeneratedTask = (NodeId, NodeId, TaskId, SuccessorResults);
+pub struct TaskId(pub(crate) NodeId, pub(crate) NodeId);
+pub type Task = (NodeId, NodeId); // TODO identical to above
 #[derive(Debug)]
-pub struct SuccessorResults(TaskId, TaskId);
+pub struct SuccessorResults(TaskId, TaskId); // TODO 
 
 #[derive(Debug)]
 pub struct Bdd {
-    pub(crate) nodes: DashMap<NodeId, Node>,
+    pub nodes: DashMap<NodeId, Node>,
     // existing
-    pub(crate) node_table: DashMap<Node, NodeId>,
+    pub node_table: DashMap<Node, NodeId>,
 }

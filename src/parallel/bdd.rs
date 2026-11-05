@@ -1,4 +1,4 @@
-use crate::parallel::{Bdd, GeneratedTask, Node, NodeId, SuccessorResults, Task, TaskId, Variable};
+use crate::parallel::{Bdd, Node, NodeId, SuccessorResults, Task, TaskId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
@@ -21,8 +21,8 @@ struct WorkerPool {
 }
 
 struct ProcessingState {
-    queue: SegQueue<GeneratedTask>,
-    results: DashMap<TaskId, (NodeId, Node)>,
+    tasks: SegQueue<(TaskId, SuccessorResults)>,
+    results: DashMap<TaskId, (NodeId, Node)>, // TODO delete and store directly use ensure_node
 }
 
 impl Bdd {
@@ -45,7 +45,7 @@ impl Bdd {
         a_id: NodeId,
         b_id: NodeId,
         total_workers: usize,
-    ) -> DashMap<Variable, SegQueue<GeneratedTask>> {
+    ) -> DashMap<Variable, DashMap<TaskId, SuccessorResults>> {
         let pool = Arc::new(WorkerPool {
             queue: SegQueue::new(),
             is_done: AtomicBool::new(false),
@@ -53,9 +53,9 @@ impl Bdd {
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id, TaskId::new()));
-        let generated_tasks: DashMap<Variable, SegQueue<GeneratedTask>> = DashMap::new();
-        generated_tasks.insert(Variable::TERMINAL_VARIABLE, SegQueue::new());
+        pool.queue.push((a_id, b_id));
+        let generated_tasks: DashMap<Variable, DashMap<TaskId, SuccessorResults>> = DashMap::new();
+        generated_tasks.insert(Variable::TERMINAL_VARIABLE, DashMap::new());
 
         thread::scope(|s| {
             for _ in 0..total_workers {
@@ -66,13 +66,13 @@ impl Bdd {
                             break;
                         }
 
-                        if let Some((a_id, b_id, task_id)) = pool.queue.pop() {
+                        if let Some((a_id, b_id)) = pool.queue.pop() {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 // TODO terminals could be processed here already
                                 generated_tasks
                                     .get(&Variable::TERMINAL_VARIABLE)
                                     .expect("A Queue for terminals should be present")
-                                    .push((a_id, b_id, task_id, SuccessorResults::TERMINAL));
+                                    .insert(TaskId(a_id, b_id), SuccessorResults::TERMINAL);
                                 continue;
                             }
 
@@ -92,23 +92,23 @@ impl Bdd {
                                 (b_id, b_id)
                             };
 
-                            let low_task_id = TaskId::new();
-                            let high_task_id = TaskId::new();
+                            let low_task_id = TaskId(low_a, low_b);
+                            let high_task_id = TaskId(high_a, high_b);
                             let successor_results_id =
                                 SuccessorResults::new(low_task_id, high_task_id);
+                            let task_id = TaskId(a_id, b_id);
+
                             if let Some(task_queue) = generated_tasks.get(&v) {
-                                task_queue.push((a_id, b_id, task_id, successor_results_id));
+                                task_queue.insert(task_id, successor_results_id);
                             } else {
-                                generated_tasks.entry(v).or_default().push((
-                                    a_id,
-                                    b_id,
-                                    task_id,
-                                    successor_results_id,
-                                ));
+                                generated_tasks
+                                    .entry(v)
+                                    .or_default()
+                                    .insert(task_id, successor_results_id);
                             }
 
-                            pool.queue.push((low_a, low_b, low_task_id));
-                            pool.queue.push((high_a, high_b, high_task_id));
+                            pool.queue.push((low_a, low_b));
+                            pool.queue.push((high_a, high_b));
                             pool.cvar.notify_one();
 
                             continue;
@@ -150,33 +150,30 @@ impl Bdd {
         generated_tasks
     }
 
-    fn process_tasks(
+    pub(crate) fn process_tasks(
         &mut self,
-        tasks: DashMap<Variable, SegQueue<GeneratedTask>>,
+        tasks: SegQueue<(Variable, SegQueue<(TaskId, SuccessorResults)>)>,
         total_workers: usize,
     ) -> (NodeId, Node) {
-        let mut keys = BTreeSet::new();
-        tasks.iter().for_each(|item| {
-            keys.insert(*item.key());
-        });
-
         let mut pool = Arc::new(ProcessingState {
-            queue: SegQueue::new(),
+            tasks: SegQueue::new(),
             results: DashMap::new(),
         });
 
-        for variable in keys.into_iter().rev() {
-            let (variable, queue) = tasks.remove(&variable).unwrap();
-
-            Arc::get_mut(&mut pool).unwrap().queue = queue;
+        while let Some((variable, queue)) = tasks.pop() {
+            Arc::get_mut(&mut pool).unwrap().tasks = queue;
 
             thread::scope(|s| {
                 for _ in 0..total_workers {
                     s.spawn(|| {
                         let pool = pool.clone();
 
-                        while let Some((a_id, b_id, task_id, successor_results)) = pool.queue.pop()
-                        {
+                        while let Some((task_id, successor_results)) = pool.tasks.pop() {
+                            println!(
+                                "Processing task: {:?} with successors: {:?}",
+                                task_id, successor_results
+                            );
+                            let (a_id, b_id) = (task_id.0, task_id.1);
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
                                     pool.results.insert(
@@ -195,19 +192,19 @@ impl Bdd {
                                         ),
                                     );
                                 }
+                                println!("Inserted result: for {:?}\n", task_id);
                                 continue;
                             }
 
                             let (low_result_id, high_result_id) = successor_results.into();
 
-                            let (_, h) = pool
-                                .results
-                                .remove(&high_result_id)
-                                .expect("High result not present");
-                            let (_, l) = pool
-                                .results
-                                .remove(&low_result_id)
-                                .expect("Low result not present");
+                            let (_, h) =
+                                pool.results.remove(&high_result_id).unwrap_or_else(|| {
+                                    panic!("{task_id:?} high result {high_result_id:?} not present")
+                                });
+                            let (_, l) = pool.results.remove(&low_result_id).unwrap_or_else(|| {
+                                panic!("{task_id:?} low result {low_result_id:?} not present")
+                            });
 
                             let (c_node_id, c) = if l != h {
                                 self.ensure_node(variable, l.0, h.0)
@@ -216,13 +213,14 @@ impl Bdd {
                             };
 
                             pool.results.insert(task_id, (c_node_id, c));
+                            println!("Inserted result: for {:?}\n", task_id);
                         }
                     });
                 }
             });
         }
 
-        assert_eq!(pool.results.len(), 1);
+        assert_eq!(pool.results.len(), 1); // TODO vysrat se na results, protoze muzu pouzivat primo nodes hash table
         *Arc::into_inner(pool)
             .unwrap()
             .results
@@ -232,12 +230,36 @@ impl Bdd {
             .value()
     }
 
+    pub(crate) fn transform_tasks(
+        generated_tasks: DashMap<Variable, DashMap<TaskId, SuccessorResults>>,
+    ) -> SegQueue<(Variable, SegQueue<(TaskId, SuccessorResults)>)> {
+        let mut variables = BTreeSet::new();
+        generated_tasks.iter().for_each(|item| {
+            variables.insert(*item.key());
+        });
+
+        let transformed_tasks: SegQueue<(Variable, SegQueue<(TaskId, SuccessorResults)>)> =
+            SegQueue::new();
+        for var in variables.into_iter().rev() {
+            let task_queue = SegQueue::new();
+            let (_, tasks) = generated_tasks.remove(&var).unwrap();
+            for (task_id, successor_results) in tasks {
+                task_queue.push((task_id, successor_results));
+            }
+            transformed_tasks.push((var, task_queue));
+        }
+        transformed_tasks
+    }
+
     pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         let total_workers = 3;
         // TODO preprocessing - zjistit vsechny promenne, abych si mohl nainicializovat vsechny queue
         let tasks = self.generate_tasks(a_id, b_id, total_workers);
 
-        self.process_tasks(tasks, total_workers)
+        // transform the no longer needed map into a queue
+        let transformed_tasks = Self::transform_tasks(tasks);
+
+        self.process_tasks(transformed_tasks, total_workers)
     }
 
     pub(crate) fn ensure_node(
@@ -251,7 +273,7 @@ impl Bdd {
             (*found, needle)
         } else {
             // TODO the TaskId could be reused for NodeId, meaning I could get rid off the results map and use the nodes map directly
-            let node_id = NodeId::new();
+            let node_id = NodeId::new(low_child, high_child);
             self.nodes.insert(node_id, needle);
             self.node_table.insert(needle, node_id);
             (node_id, needle)

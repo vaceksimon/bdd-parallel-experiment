@@ -14,18 +14,15 @@ impl Variable {
     }
 }
 
-impl Default for NodeId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl NodeId {
     pub const TERMINAL_0: Self = NodeId(uuid!("00000000-0000-0000-0000-000000000000"));
     pub const TERMINAL_1: Self = NodeId(uuid!("00000000-0000-0000-0000-000000000001"));
 
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
+    pub fn new(x: NodeId, y: NodeId) -> Self {
+        let mut combined_bytes = [0u8; 32];
+        combined_bytes[..16].copy_from_slice(x.0.as_bytes());
+        combined_bytes[16..].copy_from_slice(y.0.as_bytes());
+        Self(Uuid::new_v5(&Uuid::NAMESPACE_DNS, &combined_bytes))
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -74,24 +71,8 @@ impl Default for Bdd {
     }
 }
 
-impl From<Uuid> for TaskId {
-    fn from(value: Uuid) -> Self {
-        Self(value)
-    }
-}
-
-impl Default for TaskId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TaskId {
-    pub const TERMINAL: Self = Self(Uuid::nil());
-
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
+    pub const TERMINAL: Self = Self(NodeId::TERMINAL_0, NodeId::TERMINAL_1);
 }
 
 impl SuccessorResults {
