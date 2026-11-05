@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 crossbeam-queue = "0.3.14"
 dashmap = "6.2.1"
-uuid = { version = "1.29", features = ["v7"] }
+uuid = { version = "1.29", features = ["v5"] }
 biodivine-lib-bdd = { version = "0.6.3", optional = true }
 
 [features]
