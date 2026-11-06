@@ -1,4 +1,4 @@
-use crate::parallel::{Bdd, Node, NodeId, SuccessorResults, Task, TaskId, Variable};
+use crate::parallel::{Bdd, Node, NodeId, SuccessorResults, TaskId, Variable};
 use crossbeam_queue::SegQueue;
 use dashmap::DashMap;
 use std::cmp::min;
@@ -10,7 +10,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 struct WorkerPool {
-    queue: SegQueue<Task>,
+    queue: SegQueue<TaskId>,
 
     // Termination detection state
     is_done: AtomicBool,
@@ -54,7 +54,7 @@ impl Bdd {
             sleep_lock: Mutex::new(()),
             cvar: Condvar::new(),
         });
-        pool.queue.push((a_id, b_id));
+        pool.queue.push(TaskId(a_id, b_id));
         let generated_tasks: DashMap<Variable, DashMap<TaskId, SuccessorResults>> = DashMap::new();
         generated_tasks.insert(Variable::TERMINAL_VARIABLE, DashMap::new());
 
@@ -67,7 +67,9 @@ impl Bdd {
                             break;
                         }
 
-                        if let Some((a_id, b_id)) = pool.queue.pop() {
+                        if let Some((a_id, b_id)) =
+                            pool.queue.pop().map(|task_id| (task_id.0, task_id.1))
+                        {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 // TODO terminals could be processed here already
                                 generated_tasks
@@ -112,8 +114,8 @@ impl Bdd {
                                     .insert(task_id, successor_results_id);
                             }
 
-                            pool.queue.push((low_a, low_b));
-                            pool.queue.push((high_a, high_b));
+                            pool.queue.push(TaskId(low_a, low_b));
+                            pool.queue.push(TaskId(high_a, high_b));
                             pool.cvar.notify_one();
 
                             continue;
@@ -179,10 +181,8 @@ impl Bdd {
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
                                     pool.results.insert(task_id, NodeId::TERMINAL_1);
-                                    // println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_1.shorten());
                                 } else {
                                     pool.results.insert(task_id, NodeId::TERMINAL_0);
-                                    // println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_0.shorten());
                                 }
                                 continue;
                             }
@@ -575,7 +575,7 @@ pub(crate) mod tests {
         let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
         assert_eq!(8, bdd.nodes.len());
 
-        let (c1_id, c1) = bdd.apply(a_root_id, b_root_id);
+        let (_, c1) = bdd.apply(a_root_id, b_root_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child, NodeId::TERMINAL_0);
 
@@ -588,7 +588,6 @@ pub(crate) mod tests {
         assert_eq!(c3.low_child, NodeId::TERMINAL_0);
         assert_eq!(c3.high_child, NodeId::TERMINAL_1);
 
-        bdd.print(c1_id);
         assert_eq!(bdd.nodes.len(), 10);
     }
 
