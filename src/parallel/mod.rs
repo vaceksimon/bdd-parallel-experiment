@@ -29,5 +29,5 @@ pub struct SuccessorResults(TaskId, TaskId); // TODO
 pub struct Bdd {
     pub nodes: DashMap<NodeId, Node>,
     // existing
-    pub node_table: DashMap<Node, NodeId>,
+    pub node_table: DashMap<Node, NodeId>, // TODO DELETE
 }

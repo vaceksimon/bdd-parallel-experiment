@@ -23,7 +23,7 @@ struct WorkerPool {
 
 struct ProcessingState {
     tasks: SegQueue<(TaskId, SuccessorResults)>,
-    results: DashMap<TaskId, (NodeId, Node)>, // TODO neni treba, muzu tahat primo z `nodes` a root dohledam pomoci node_a_id a node_b_id
+    results: DashMap<TaskId, NodeId>,
 }
 
 impl Bdd {
@@ -98,6 +98,7 @@ impl Bdd {
 
                             let low_task_id = TaskId(low_a, low_b);
                             let high_task_id = TaskId(high_a, high_b);
+
                             let successor_results_id =
                                 SuccessorResults::new(low_task_id, high_task_id);
                             let task_id = TaskId(a_id, b_id);
@@ -157,8 +158,9 @@ impl Bdd {
     pub(crate) fn process_tasks(
         &mut self,
         tasks: SegQueue<(Variable, SegQueue<(TaskId, SuccessorResults)>)>,
+        root_nodes: (NodeId, NodeId),
         total_workers: usize,
-    ) -> (NodeId, Node) {
+    ) -> NodeId {
         let mut pool = Arc::new(ProcessingState {
             tasks: SegQueue::new(),
             results: DashMap::new(),
@@ -178,26 +180,14 @@ impl Bdd {
                                 task_id, successor_results
                             );
                             let (a_id, b_id) = (task_id.0, task_id.1);
-                            if a_id.is_terminal() && b_id.is_terminal() { // TODO terminal nodes by se mely preskocit
+                            if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
-                                    pool.results.insert(
-                                        task_id,
-                                        (
-                                            NodeId::TERMINAL_1,
-                                            *self.nodes.get(&NodeId::TERMINAL_1).unwrap(),
-                                        ),
-                                    );
+                                    pool.results.insert(task_id, NodeId::TERMINAL_1);
+                                    println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_1.shorten());
                                 } else {
-                                    pool.results.insert(
-                                        task_id,
-                                        (
-                                            NodeId::TERMINAL_0,
-                                            *self.nodes.get(&NodeId::TERMINAL_0).unwrap(),
-                                        ),
-                                    );
+                                    pool.results.insert(task_id, NodeId::TERMINAL_0);
+                                    println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_0.shorten());
                                 }
-                                let (node_id, _) = self.ensure_node(Variable::TERMINAL_VARIABLE, a_id, b_id, task_id); // TODO toto tu nemuze byt, terminal node uz existuje
-                                println!("Inserted result: for {} with new node_id: {}\n", task_id, node_id);
                                 continue;
                             }
 
@@ -206,33 +196,27 @@ impl Bdd {
 
                             let h =
                                 pool.results
-                                    .remove(&high_result_id)
-                                    .map(|r| r.1)
+                                    .get(&high_result_id)
+                                    .map(|r| *r.value())
                                     .unwrap_or_else(|| {
-                                        println!("Task {}, high result: {} not found in results", task_id, high_result_id);
-                                        self.get_node(high_result_id).unwrap_or_else(|| {
-                                            panic!("Task {task_id} high_result {high_result_id} not found")
-                                        })
+                                        panic!("Task {task_id} high_result {high_result_id} not found")
                                     });
                             let l =
                                 pool.results
-                                    .remove(&low_result_id)
-                                    .map(|r| r.1)
+                                    .get(&low_result_id)
+                                    .map(|r| *r.value())
                                     .unwrap_or_else(|| {
-                                        println!("Task {}, low result: {} not found in results", task_id, low_result_id);
-                                        self.get_node(low_result_id).unwrap_or_else(|| {
                                             panic!("Task {task_id} low_result {low_result_id} not found")
-                                        })
                                     });
 
-                            let (c_node_id, c) = if l != h {
-                                println!("Creating new node of task: {} with successors, low: {}, high: {}", task_id, l.0, h.0);
-                                self.ensure_node(variable, l.0, h.0, task_id)
+                            let c_node_id  = if l != h {
+                                println!("Creating new node of task: {} with successors, low: {}, high: {}", task_id, l, h);
+                                self.ensure_node(variable, l, h, task_id)
                             } else {
                                 l
                             };
 
-                            pool.results.insert(task_id, (c_node_id, c));
+                            pool.results.insert(task_id, c_node_id);
                             println!("Inserted result: for {} with new node_id: {}\n", task_id, c_node_id);
                         }
                     });
@@ -240,14 +224,10 @@ impl Bdd {
             });
         }
 
-        assert_eq!(pool.results.len(), 1);
-        *Arc::into_inner(pool)
+        pool.results
+            .remove(&TaskId(root_nodes.0, root_nodes.1))
             .unwrap()
-            .results
-            .iter()
-            .next()
-            .unwrap()
-            .value()
+            .1
     }
 
     pub(crate) fn transform_tasks(
@@ -279,7 +259,10 @@ impl Bdd {
         // transform the no longer needed map into a queue
         let transformed_tasks = Self::transform_tasks(tasks);
 
-        self.process_tasks(transformed_tasks, total_workers)
+        let root_id = self.process_tasks(transformed_tasks, (a_id, b_id), total_workers);
+        let root_node = self.nodes.get(&root_id).map(|r| *r.value()).unwrap();
+
+        (root_id, root_node)
     }
 
     pub(crate) fn ensure_node(
@@ -288,23 +271,22 @@ impl Bdd {
         low_child: NodeId,
         high_child: NodeId,
         task_id: TaskId,
-    ) -> (NodeId, Node) {
-        let node_id = NodeId::new(task_id.0, task_id.1);
-        self.nodes.get(&node_id).map_or_else(
-            || {
-                let new_node = Node::new(variable, low_child, high_child);
-                self.nodes.insert(node_id, new_node);
-                (node_id, new_node)
-            },
-            |r| (*r.key(), *r.value()),
-        )
-    }
+    ) -> NodeId {
+        let needle = Node::new(variable, low_child, high_child);
 
-    pub(crate) fn get_node(&self, successors: TaskId) -> Option<(NodeId, Node)> {
-        let node_id = NodeId::new(successors.0, successors.1);
-        self.nodes
-            .get(&node_id)
-            .map(|r| (*r.key(), *r.value()))
+        let node_id = self
+            .node_table
+            .get(&needle)
+            .map(|r| *r.value())
+            .unwrap_or_else(|| {
+                let node_id = NodeId::new(task_id.0, task_id.1);
+                self.nodes.insert(node_id, needle);
+                self.node_table.insert(needle, node_id);
+                node_id
+            });
+
+        println!("[ENSURE_NODE] Computed id: {}", node_id);
+        node_id
     }
 
     /// Merge all nodes from `other` into this BDD's storage.
@@ -343,7 +325,12 @@ impl Bdd {
         let node = other.nodes.get(&id).unwrap();
         let low = Self::merge_node(self, other, node.low_child, id_map);
         let high = Self::merge_node(self, other, node.high_child, id_map);
-        let (new_id, _) = self.ensure_node(node.variable, low, high, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let new_id = self.ensure_node(
+            node.variable,
+            low,
+            high,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
         id_map.insert(id, new_id);
         new_id
     }
@@ -375,7 +362,12 @@ impl Bdd {
         let node = source.nodes.get(&id).unwrap();
         let low = Self::extract_node(extracted, source, node.low_child, id_map);
         let high = Self::extract_node(extracted, source, node.high_child, id_map);
-        let (new_id, _) = extracted.ensure_node(node.variable, low, high, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let new_id = extracted.ensure_node(
+            node.variable,
+            low,
+            high,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
         id_map.insert(id, new_id);
         new_id
     }
@@ -384,10 +376,6 @@ impl Bdd {
     ///
     /// Generated by Gemini 3.8 Flash
     pub fn print(&self, root: NodeId) {
-        fn short_id(id: NodeId) -> String {
-            let s = id.0.to_string();
-            s[s.len() - 8..].to_string()
-        }
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         // Group nodes by their variable: Variable -> Vec<NodeId>
@@ -410,7 +398,7 @@ impl Bdd {
             }
         }
 
-        println!("BDD Root: [{}]", short_id(root));
+        println!("BDD Root: [{}]", root.shorten());
 
         // Print level-by-level grouped by decision variable
         for (var, nodes_at_level) in levels {
@@ -420,9 +408,9 @@ impl Bdd {
                 let node = entry.value();
                 println!(
                     "  [{}] ──(low)─> [{}] | ──(high)─> [{}]",
-                    short_id(node_id),
-                    short_id(node.low_child),
-                    short_id(node.high_child),
+                    node_id.shorten(),
+                    node.low_child.shorten(),
+                    node.high_child.shorten(),
                 );
             }
         }
@@ -440,18 +428,26 @@ pub(crate) mod tests {
         // https://github.com/sybila/ruddy/blob/e9b014b7fe3f5b1e8929632dc8a5ca4f9cde717e/src/split/apply.rs#L424
         let mut bdd = Bdd::new();
 
-        let (a_id, a) = bdd.ensure_node(Variable(1), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (b_id, _) = bdd.ensure_node(Variable(2), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let a_id = bdd.ensure_node(
+            Variable(1),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let b_id = bdd.ensure_node(
+            Variable(2),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
         let (tt_id, _) = (NodeId::TERMINAL_1, Node::one());
         let (ff_id, ff) = (NodeId::TERMINAL_0, Node::zero());
 
-        let (res_id, res) = bdd.apply(a_id, a_id);
+        let (res_id, _) = bdd.apply(a_id, a_id);
         assert_eq!(res_id, a_id);
-        assert_eq!(res, a);
 
-        let (res_id, res) = bdd.apply(a_id, tt_id);
+        let (res_id, _) = bdd.apply(a_id, tt_id);
         assert_eq!(res_id, a_id);
-        assert_eq!(res, a);
 
         let (res_id, res) = bdd.apply(a_id, ff_id);
         assert_eq!(res_id, ff_id);
@@ -585,8 +581,9 @@ pub(crate) mod tests {
     #[test]
     fn assert_thesis_example_apply() {
         let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
+        assert_eq!(8, bdd.nodes.len());
 
-        let (_, c1) = bdd.apply(a_root_id, b_root_id);
+        let (c1_id, c1) = bdd.apply(a_root_id, b_root_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child, NodeId::TERMINAL_0);
 
@@ -599,21 +596,57 @@ pub(crate) mod tests {
         assert_eq!(c3.low_child, NodeId::TERMINAL_0);
         assert_eq!(c3.high_child, NodeId::TERMINAL_1);
 
+        bdd.print(c1_id);
         assert_eq!(bdd.nodes.len(), 10);
     }
 
     #[test]
     fn merge_remaps_ids_and_deduplicates_nodes() {
         let mut bdd_a = Bdd::new();
-        let (a4_id, _) = bdd_a.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (a3_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (a2_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        bdd_a.ensure_node(Variable(1), a2_id, a3_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let a4_id = bdd_a.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let a3_id = bdd_a.ensure_node(
+            Variable(2),
+            NodeId::TERMINAL_1,
+            a4_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let a2_id = bdd_a.ensure_node(
+            Variable(2),
+            NodeId::TERMINAL_0,
+            a4_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        bdd_a.ensure_node(
+            Variable(1),
+            a2_id,
+            a3_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
 
         let bdd_b = Bdd::new();
-        let (b3_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (b2_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (b1_id, _) = bdd_b.ensure_node(Variable(2), b2_id, b3_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let b3_id = bdd_b.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_1,
+            NodeId::TERMINAL_0,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let b2_id = bdd_b.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let b1_id = bdd_b.ensure_node(
+            Variable(2),
+            b2_id,
+            b3_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
 
         let nodes_before = bdd_a.nodes.len();
         let id_map = bdd_a.merge(&bdd_b);
@@ -691,15 +724,50 @@ pub(crate) mod tests {
         let (_, expected) = bdd_ab.apply(a_root_id, b_root_id);
 
         let mut bdd_a = Bdd::new();
-        let (a4_id, _) = bdd_a.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (a3_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_1, a4_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (a2_id, _) = bdd_a.ensure_node(Variable(2), NodeId::TERMINAL_0, a4_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (a1_id, _) = bdd_a.ensure_node(Variable(1), a2_id, a3_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let a4_id = bdd_a.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let a3_id = bdd_a.ensure_node(
+            Variable(2),
+            NodeId::TERMINAL_1,
+            a4_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let a2_id = bdd_a.ensure_node(
+            Variable(2),
+            NodeId::TERMINAL_0,
+            a4_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let a1_id = bdd_a.ensure_node(
+            Variable(1),
+            a2_id,
+            a3_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
 
         let bdd_b = Bdd::new();
-        let (b3_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_1, NodeId::TERMINAL_0, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (b2_id, _) = bdd_b.ensure_node(Variable(3), NodeId::TERMINAL_0, NodeId::TERMINAL_1, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
-        let (b1_id, _) = bdd_b.ensure_node(Variable(2), b2_id, b3_id, TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())));
+        let b3_id = bdd_b.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_1,
+            NodeId::TERMINAL_0,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let b2_id = bdd_b.ensure_node(
+            Variable(3),
+            NodeId::TERMINAL_0,
+            NodeId::TERMINAL_1,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
+        let b1_id = bdd_b.ensure_node(
+            Variable(2),
+            b2_id,
+            b3_id,
+            TaskId(NodeId(Uuid::now_v7()), NodeId(Uuid::now_v7())),
+        );
 
         let id_map = bdd_a.merge(&bdd_b);
         let (_, actual) = bdd_a.apply(a1_id, id_map[&b1_id]);

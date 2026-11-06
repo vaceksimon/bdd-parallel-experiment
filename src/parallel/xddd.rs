@@ -32,7 +32,7 @@ pub mod tests {
         println!("Total tasks = {}", tasks_total);
 
         let transformed_task = Bdd::transform_tasks(generated_tasks_2);
-        bdd_actual.process_tasks(transformed_task, 10);
+        bdd_actual.process_tasks(transformed_task, (a_root, b_root), 10);
         let new_size = bdd_actual.nodes.len();
         println!("Resulting BDD has {} nodes", new_size);
         println!("New nodes = {}", new_size - original_size);

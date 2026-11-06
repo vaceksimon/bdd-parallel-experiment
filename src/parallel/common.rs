@@ -16,8 +16,8 @@ impl Variable {
 }
 
 impl NodeId {
-    pub const TERMINAL_0: Self = NodeId(uuid!("4d2e9633-9013-58b4-bacd-23fe7e6219b5"));
-    pub const TERMINAL_1: Self = NodeId(uuid!("2f74ec4e-0603-5c74-b8c4-680f22547e65"));
+    pub const TERMINAL_0: Self = NodeId(uuid!("f56f7e63-aa4f-590f-90d6-bc9c11beb92d"));
+    pub const TERMINAL_1: Self = NodeId(uuid!("957cf0cd-0ea4-5a8e-b9da-b04d52ea19b7"));
 
     pub fn new(x: NodeId, y: NodeId) -> Self {
         let mut combined_bytes = [0u8; 32];
@@ -39,7 +39,7 @@ impl NodeId {
         self == Self::TERMINAL_1
     }
 
-    fn shorten(&self) -> String {
+    pub(crate) fn shorten(&self) -> String {
         let s = self.0.to_string();
         let value = &s[s.len() - 12..];
         value.to_string()
@@ -84,10 +84,6 @@ impl Default for Bdd {
     }
 }
 
-impl TaskId {
-    pub const TERMINAL: Self = Self(NodeId::TERMINAL_0, NodeId::TERMINAL_1);
-}
-
 impl Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.0, self.1)
@@ -95,8 +91,6 @@ impl Display for TaskId {
 }
 
 impl SuccessorResults {
-    pub const TERMINAL: Self = Self(TaskId::TERMINAL, TaskId::TERMINAL);
-
     pub fn new(a: TaskId, b: TaskId) -> Self {
         Self(a, b)
     }
@@ -132,23 +126,17 @@ mod tests {
 
     #[test]
     fn test_terminal_0_matches_runtime_computation() {
-        let zero = NodeId::new(
-            NodeId(uuid!("00000000-0000-0000-0000-000000000000")),
-            NodeId(uuid!("00000000-0000-0000-0000-000000000000")),
-        );
-        let computed = NodeId::new(zero, zero);
+        let zero_uuid = uuid!("00000000-0000-0000-0000-000000000000");
 
-        assert_eq!(NodeId::TERMINAL_0, computed);
+        let zero_node_id = NodeId::new(NodeId(zero_uuid), NodeId(zero_uuid));
+        assert_eq!(NodeId::TERMINAL_0, zero_node_id);
     }
 
     #[test]
     fn test_terminal_1_matches_runtime_computation() {
-        let one = NodeId::new(
-            NodeId(uuid!("00000000-0000-0000-0000-000000000001")),
-            NodeId(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-        let computed = NodeId::new(one, one);
+        let one_uuid = uuid!("00000000-0000-0000-0000-000000000001");
 
-        assert_eq!(NodeId::TERMINAL_1, computed);
+        let one_node_id = NodeId::new(NodeId(one_uuid), NodeId(one_uuid));
+        assert_eq!(NodeId::TERMINAL_1, one_node_id);
     }
 }
