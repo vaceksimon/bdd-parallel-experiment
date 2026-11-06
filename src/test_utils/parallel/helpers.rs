@@ -31,7 +31,7 @@ pub(crate) fn sanity_check(bdd: &Bdd, root: NodeId) {
         let node = *bdd
             .nodes
             .get(&node_id)
-            .expect("Sanity check failed")
+            .unwrap_or_else(|| panic!("Sanity check failed for node id {}", node_id))
             .value();
         let high_child = node.high_child;
         if !high_child.is_terminal() {

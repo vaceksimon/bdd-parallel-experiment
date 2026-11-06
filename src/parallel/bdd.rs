@@ -175,49 +175,42 @@ impl Bdd {
                         let pool = pool.clone();
 
                         while let Some((task_id, successor_results)) = pool.tasks.pop() {
-                            println!(
-                                "Processing task: {} with successors: {}",
-                                task_id, successor_results
-                            );
                             let (a_id, b_id) = (task_id.0, task_id.1);
                             if a_id.is_terminal() && b_id.is_terminal() {
                                 if a_id.is_one() && b_id.is_one() {
                                     pool.results.insert(task_id, NodeId::TERMINAL_1);
-                                    println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_1.shorten());
+                                    // println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_1.shorten());
                                 } else {
                                     pool.results.insert(task_id, NodeId::TERMINAL_0);
-                                    println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_0.shorten());
+                                    // println!("Inserted terminal result: for {} with node_id: {}\n", task_id, NodeId::TERMINAL_0.shorten());
                                 }
                                 continue;
                             }
 
                             let (low_result_id, high_result_id) = successor_results.into();
-                            println!("Trying to get successors for {}: low: {}, high: {}", task_id, low_result_id, high_result_id);
 
-                            let h =
-                                pool.results
-                                    .get(&high_result_id)
-                                    .map(|r| *r.value())
-                                    .unwrap_or_else(|| {
-                                        panic!("Task {task_id} high_result {high_result_id} not found")
-                                    });
-                            let l =
-                                pool.results
-                                    .get(&low_result_id)
-                                    .map(|r| *r.value())
-                                    .unwrap_or_else(|| {
-                                            panic!("Task {task_id} low_result {low_result_id} not found")
-                                    });
+                            let h = pool
+                                .results
+                                .get(&high_result_id)
+                                .map(|r| *r.value())
+                                .unwrap_or_else(|| {
+                                    panic!("Task {task_id} high_result {high_result_id} not found")
+                                });
+                            let l = pool
+                                .results
+                                .get(&low_result_id)
+                                .map(|r| *r.value())
+                                .unwrap_or_else(|| {
+                                    panic!("Task {task_id} low_result {low_result_id} not found")
+                                });
 
-                            let c_node_id  = if l != h {
-                                println!("Creating new node of task: {} with successors, low: {}, high: {}", task_id, l, h);
+                            let c_node_id = if l != h {
                                 self.ensure_node(variable, l, h, task_id)
                             } else {
                                 l
                             };
 
                             pool.results.insert(task_id, c_node_id);
-                            println!("Inserted result: for {} with new node_id: {}\n", task_id, c_node_id);
                         }
                     });
                 }
@@ -274,8 +267,7 @@ impl Bdd {
     ) -> NodeId {
         let needle = Node::new(variable, low_child, high_child);
 
-        let node_id = self
-            .node_table
+        self.node_table
             .get(&needle)
             .map(|r| *r.value())
             .unwrap_or_else(|| {
@@ -283,10 +275,7 @@ impl Bdd {
                 self.nodes.insert(node_id, needle);
                 self.node_table.insert(needle, node_id);
                 node_id
-            });
-
-        println!("[ENSURE_NODE] Computed id: {}", node_id);
-        node_id
+            })
     }
 
     /// Merge all nodes from `other` into this BDD's storage.
@@ -322,7 +311,10 @@ impl Bdd {
             return mapped;
         }
 
-        let node = other.nodes.get(&id).unwrap();
+        let node = other.nodes.get(&id).unwrap_or_else(|| {
+            panic!("Node with ID {:?} not found in other BDD", id);
+        });
+
         let low = Self::merge_node(self, other, node.low_child, id_map);
         let high = Self::merge_node(self, other, node.high_child, id_map);
         let new_id = self.ensure_node(
