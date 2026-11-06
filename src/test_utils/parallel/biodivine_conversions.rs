@@ -13,8 +13,6 @@ impl Bdd {
         id_map: &mut HashMap<NodeId, BiodivineNodeId>,
         current_id: &mut usize,
     ) -> BiodivineNodeId {
-        // TODO can be done with impl Into<BiodivineNodeId> for NodeId
-
         if let Some(biodivine_node_id) = id_map.get(&node_id) {
             *biodivine_node_id
         } else {
@@ -36,7 +34,6 @@ impl Bdd {
     }
 
     pub(crate) fn into_biodivine_bdd(self, root: NodeId) -> BiodivineBdd {
-        // TODO can be done with impl Into<BiodivineBdd> for Bdd
         let mut id_map: HashMap<NodeId, BiodivineNodeId> = HashMap::new();
         let mut nodes: Vec<BiodivineNode> = vec![
             BiodivineNode::mk_zero(u16::MAX),
