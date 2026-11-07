@@ -15,7 +15,7 @@ env:
   # spontaneously break after a few years.
   # Make sure to update this from time to time.
   RUST_VERSION: "1.96.0"
-  MIN_RUST_VERSION: "1.88.0"
+  MIN_RUST_VERSION: "1.89.0"
   CARGO_FEATURES: "--all-features"
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
