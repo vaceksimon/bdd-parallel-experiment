@@ -1,21 +1,36 @@
 use bdd_parallel_experiment::test_utils::load_util::parse_big_file_path;
 use bdd_parallel_experiment::test_utils::parallel::helpers::merge_load;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::time::Instant;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let file_a = parse_big_file_path(17539);
-    let file_b = parse_big_file_path(14691);
+    let mut group = c.benchmark_group("BDD");
+    group.sample_size(10);
+
+    let workers_range = 1usize..=8usize;
+    let bdd_a = 17539;
+    let bdd_b = 14691;
+
+    let file_a = parse_big_file_path(bdd_a);
+    let file_b = parse_big_file_path(bdd_b);
 
     let start = Instant::now();
     let (mut bdd_actual, a_root, b_root) = merge_load(&file_a, &file_b);
     let end = Instant::now();
     let elapsed = end.duration_since(start);
-    println!("Load time for 17539 14691: {:?}", elapsed);
+    println!("Load time for {} {}: {:?}", bdd_a, bdd_b, elapsed);
 
-    c.bench_function("bdd parallel 17539, 14691", |b| {
-        b.iter(|| bdd_actual.apply(a_root, b_root))
-    });
+    for workers in workers_range {
+        group.bench_with_input(
+            BenchmarkId::new("BDD ten thousand", workers),
+            &workers,
+            |b, &workers| {
+                b.iter(|| bdd_actual.apply(workers, a_root, b_root));
+            },
+        );
+    }
+
+    group.finish();
 }
 
 criterion_group!(benches, criterion_benchmark);

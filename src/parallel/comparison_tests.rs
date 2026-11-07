@@ -21,11 +21,12 @@ mod tests {
             !files.is_empty(),
             "expected at least one .bdd file in test-data with at most {MAX_INPUT_NODES} nodes"
         );
+        let total_workers = 3;
 
         for i in 0..files.len() {
             for j in i..files.len() {
                 let (mut bdd_actual, a_root, b_root) = merge_load(&files[i], &files[j]);
-                let (root_actual, _) = bdd_actual.apply(a_root, b_root);
+                let (root_actual, _) = bdd_actual.apply(total_workers, a_root, b_root);
                 sanity_check(&bdd_actual, root_actual);
 
                 let biodivine_a: BiodivineBdd = load_biodivine_bdd(&files[i]);

@@ -244,8 +244,7 @@ impl Bdd {
         transformed_tasks
     }
 
-    pub fn apply(&mut self, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
-        let total_workers = 3;
+    pub fn apply(&mut self, total_workers: usize, a_id: NodeId, b_id: NodeId) -> (NodeId, Node) {
         // TODO preprocessing - zjistit vsechny promenne, abych si mohl nainicializovat vsechny queue
         let tasks = self.generate_tasks(a_id, b_id, total_workers);
 
@@ -419,6 +418,7 @@ pub(crate) mod tests {
         // Taken from Ruddy:
         // https://github.com/sybila/ruddy/blob/e9b014b7fe3f5b1e8929632dc8a5ca4f9cde717e/src/split/apply.rs#L424
         let mut bdd = Bdd::new();
+        let total_workers = 2;
 
         let a_id = bdd.ensure_node(
             Variable(1),
@@ -435,18 +435,18 @@ pub(crate) mod tests {
         let (tt_id, _) = (NodeId::TERMINAL_1, Node::one());
         let (ff_id, ff) = (NodeId::TERMINAL_0, Node::zero());
 
-        let (res_id, _) = bdd.apply(a_id, a_id);
+        let (res_id, _) = bdd.apply(total_workers, a_id, a_id);
         assert_eq!(res_id, a_id);
 
-        let (res_id, _) = bdd.apply(a_id, tt_id);
+        let (res_id, _) = bdd.apply(total_workers, a_id, tt_id);
         assert_eq!(res_id, a_id);
 
-        let (res_id, res) = bdd.apply(a_id, ff_id);
+        let (res_id, res) = bdd.apply(total_workers, a_id, ff_id);
         assert_eq!(res_id, ff_id);
         assert_eq!(res, ff);
 
-        let (res_id, res) = bdd.apply(a_id, b_id);
-        let (res2_id, res2) = bdd.apply(b_id, a_id);
+        let (res_id, res) = bdd.apply(total_workers, a_id, b_id);
+        let (res2_id, res2) = bdd.apply(total_workers, b_id, a_id);
         assert_eq!(res_id, res2_id);
         assert_eq!(res2, res);
     }
@@ -575,7 +575,8 @@ pub(crate) mod tests {
         let (mut bdd, a_root_id, b_root_id) = make_thesis_example_bdds();
         assert_eq!(8, bdd.nodes.len());
 
-        let (_, c1) = bdd.apply(a_root_id, b_root_id);
+        let total_workers = 3;
+        let (_, c1) = bdd.apply(total_workers, a_root_id, b_root_id);
         assert_eq!(c1.variable, Variable(1));
         assert_eq!(c1.low_child, NodeId::TERMINAL_0);
 
@@ -712,7 +713,8 @@ pub(crate) mod tests {
     #[test]
     fn merge_then_apply_matches_single_bdd_apply() {
         let (mut bdd_ab, a_root_id, b_root_id) = make_thesis_example_bdds();
-        let (_, expected) = bdd_ab.apply(a_root_id, b_root_id);
+        let total_workers = 3;
+        let (_, expected) = bdd_ab.apply(total_workers, a_root_id, b_root_id);
 
         let mut bdd_a = Bdd::new();
         let a4_id = bdd_a.ensure_node(
@@ -761,7 +763,7 @@ pub(crate) mod tests {
         );
 
         let id_map = bdd_a.merge(&bdd_b);
-        let (_, actual) = bdd_a.apply(a1_id, id_map[&b1_id]);
+        let (_, actual) = bdd_a.apply(total_workers, a1_id, id_map[&b1_id]);
 
         // Assertions
         assert_eq!(actual.variable, expected.variable);
