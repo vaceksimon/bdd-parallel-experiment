@@ -16,7 +16,11 @@ test-utils = ["dep:biodivine-lib-bdd"]
 criterion = { version = "0.8.2", features = ["html_reports"] }
 
 [[bench]]
-name = "dummy_benchmark"
+name = "thousand_benchmark"
+harness = false
+
+[[bench]]
+name = "thousands_benchmark"
 harness = false
 
 [[bench]]
