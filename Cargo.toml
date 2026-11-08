@@ -26,3 +26,15 @@ harness = false
 [[bench]]
 name = "ten_thousands_benchmark"
 harness = false
+
+[[bench]]
+name = "hundred_thousands_benchmark"
+harness = false
+
+[[bench]]
+name = "million_benchmark"
+harness = false
+
+[[bench]]
+name = "ten_million_benchmark"
+harness = false
