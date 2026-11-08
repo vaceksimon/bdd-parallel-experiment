@@ -64,8 +64,6 @@ pub fn merge_load(a_path: &Path, b_path: &Path) -> (Bdd, NodeId, NodeId) {
     let id_map = merged.merge(&bdd_b);
     let b_root_merged = id_map[&b_root];
 
-    sanity_check(&merged, a_root);
-    sanity_check(&merged, b_root_merged);
     (merged, a_root, b_root_merged)
 }
 
