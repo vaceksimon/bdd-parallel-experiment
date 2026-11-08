@@ -105,13 +105,18 @@ impl Bdd {
                                 SuccessorResults::new(low_task_id, high_task_id);
                             let task_id = TaskId(a_id, b_id);
 
-                            if let Some(task_queue) = generated_tasks.get(&v) {
-                                task_queue.insert(task_id, successor_results_id);
+                            let inserted = if let Some(task_queue) = generated_tasks.get(&v) {
+                                task_queue.insert(task_id, successor_results_id).is_none()
                             } else {
                                 generated_tasks
                                     .entry(v)
                                     .or_default()
-                                    .insert(task_id, successor_results_id);
+                                    .insert(task_id, successor_results_id)
+                                    .is_none()
+                            };
+
+                            if !inserted {
+                                continue;
                             }
 
                             pool.queue.push(TaskId(low_a, low_b));
