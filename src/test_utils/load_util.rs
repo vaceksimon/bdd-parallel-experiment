@@ -12,7 +12,7 @@ pub fn parse_file_path(size: u32) -> PathBuf {
     test_data_dir().join(format!("{size}.binary.bdd"))
 }
 
-pub fn parse_big_file_path(size: u32) -> PathBuf {
+pub fn parse_big_file_path(size: usize) -> PathBuf {
     test_data_dir().join(format!("big-data/bdd-10M/{size}.binary.bdd"))
 }
 
