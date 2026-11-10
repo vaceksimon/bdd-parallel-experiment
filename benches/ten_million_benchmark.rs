@@ -4,7 +4,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::time::{Duration, Instant};
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("BDD");
+    let mut group = c.benchmark_group("BDD 10m");
     group.sample_size(10);
     group.measurement_time(Duration::from_mins(5));
 
@@ -21,9 +21,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     let elapsed = end.duration_since(start);
     println!("Load time for {} {}: {:?}", bdd_a, bdd_b, elapsed);
 
+    let bench_id = format!("{}x{}", bdd_a, bdd_b);
     for workers in workers_range {
         group.bench_with_input(
-            BenchmarkId::new("BDD ten million", workers),
+            BenchmarkId::new(bench_id.clone(), workers),
             &workers,
             |b, &workers| {
                 b.iter(|| bdd_actual.apply(workers, a_root, b_root));
